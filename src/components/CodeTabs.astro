@@ -1,0 +1,103 @@
+---
+import { Code } from 'astro:components';
+
+export interface Tab {
+  label: string;
+  /** SQL/shell source; omit to render `note` instead. */
+  code?: string;
+  lang?: 'sql' | 'sh' | 'python';
+  /** Short prose shown above the code. */
+  note?: string;
+  badge?: string;
+}
+
+interface Props {
+  id: string;
+  tabs: Tab[];
+  label?: string;
+}
+
+const { id, tabs, label = 'Examples' } = Astro.props;
+---
+
+<div class="tabs card" data-tabs>
+  <div class="tablist" role="tablist" aria-label={label}>
+    {
+      tabs.map((t, i) => (
+        <button
+          type="button"
+          role="tab"
+          id={`${id}-tab-${i}`}
+          aria-controls={`${id}-panel-${i}`}
+          aria-selected={i === 0 ? 'true' : 'false'}
+          tabindex={i === 0 ? 0 : -1}
+        >
+          {t.label}
+          {t.badge && <span class="pill soon">{t.badge}</span>}
+        </button>
+      ))
+    }
+  </div>
+  {
+    tabs.map((t, i) => (
+      <div role="tabpanel" id={`${id}-panel-${i}`} aria-labelledby={`${id}-tab-${i}`} hidden={i !== 0}>
+        {t.note && <p class="note" set:html={t.note} />}
+        {t.code && <Code code={t.code} lang={t.lang ?? 'sql'} theme="github-dark" />}
+      </div>
+    ))
+  }
+</div>
+
+<script>
+  import { initTabs } from '../scripts/tabs';
+  initTabs();
+</script>
+
+<style>
+  .tabs {
+    overflow: hidden;
+  }
+  .tablist {
+    display: flex;
+    gap: 4px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  [role='tab'] {
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--muted);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  [role='tab']:hover {
+    color: var(--text);
+  }
+  [role='tab'][aria-selected='true'] {
+    color: var(--text);
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+  }
+  [role='tab']:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .note {
+    padding: 18px 22px 0;
+    color: var(--muted);
+    font-size: 0.93rem;
+    max-width: 90ch;
+  }
+  .note :global(code) {
+    font-size: 0.85em;
+  }
+</style>

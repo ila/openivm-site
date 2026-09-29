@@ -1,0 +1,134 @@
+---
+// Cross-system IVM (after Figure 3 of the SIGMOD 2024 demo paper).
+---
+
+<figure class="diagram">
+  <div class="scroll">
+    <svg viewBox="0 0 900 290" role="img" aria-labelledby="xs-title xs-desc">
+      <title id="xs-title">Cross-system IVM between DuckDB and PostgreSQL</title>
+      <desc id="xs-desc">
+        A materialized view in DuckDB is defined over a table in an attached PostgreSQL instance. Updates to the
+        PostgreSQL table are captured in a delta table there. OpenIVM sends compiled queries to PostgreSQL, the
+        incremental result flows back into the view's delta in DuckDB, and is merged into the view.
+      </desc>
+      <defs>
+        <marker id="xs-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 10 5 0 10z" class="head"></path>
+        </marker>
+      </defs>
+
+      <rect class="box input" x="10" y="44" width="200" height="92" rx="10"></rect>
+      <text class="mono" x="24" y="70">CREATE MATERIALIZED</text>
+      <text class="mono" x="24" y="88">VIEW my_view AS</text>
+      <text class="mono" x="24" y="106">SELECT COUNT(*)</text>
+      <text class="mono" x="24" y="124">FROM p.my_table;</text>
+
+      <rect class="engine" x="260" y="20" width="220" height="232" rx="16"></rect>
+      <text class="eng" x="370" y="48">DuckDB</text>
+      <text class="role" x="370" y="274">analytical engine</text>
+      <rect class="box" x="292" y="80" width="156" height="46" rx="9"></rect>
+      <text class="t" x="370" y="108">my_view</text>
+      <rect class="box delta" x="292" y="176" width="156" height="46" rx="9"></rect>
+      <text class="t" x="370" y="204">Δ my_view</text>
+
+      <rect class="engine" x="620" y="20" width="220" height="232" rx="16"></rect>
+      <text class="eng" x="730" y="48">PostgreSQL <tspan class="dim">p</tspan></text>
+      <text class="role" x="730" y="274">attached transactional engine</text>
+      <rect class="box" x="652" y="80" width="156" height="46" rx="9"></rect>
+      <text class="t" x="730" y="108">my_table</text>
+      <rect class="box delta" x="652" y="176" width="156" height="46" rx="9"></rect>
+      <text class="t" x="730" y="204">Δ my_table</text>
+
+      <g class="flow">
+        <path d="M210 90H256" marker-end="url(#xs-arrow)"></path>
+        <path d="M480 60H616" marker-end="url(#xs-arrow)"></path>
+        <path d="M652 199H452" marker-end="url(#xs-arrow)"></path>
+        <path d="M370 176V130" marker-end="url(#xs-arrow)"></path>
+        <path d="M730 126V172" marker-end="url(#xs-arrow)"></path>
+        <path d="M890 103H812" marker-end="url(#xs-arrow)"></path>
+      </g>
+      <text class="lbl" x="548" y="52" text-anchor="middle">compiled queries</text>
+      <text class="lbl pink" x="552" y="190" text-anchor="middle">incremental result</text>
+      <text class="lbl" x="378" y="157">merge</text>
+      <text class="lbl" x="738" y="157">capture</text>
+      <text class="lbl" x="886" y="94" text-anchor="end">updates</text>
+    </svg>
+  </div>
+  <figcaption>
+    Because the output is SQL, the maintenance steps can run where the data lives. Here PostgreSQL takes the
+    transactional writes and DuckDB keeps the analytical view fresh. Adapted from the SIGMOD 2024 demo paper.
+  </figcaption>
+</figure>
+
+<style>
+  .diagram {
+    margin: 0;
+  }
+  .scroll {
+    overflow-x: auto;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    min-width: 680px;
+    height: auto;
+  }
+  .engine {
+    fill: color-mix(in srgb, var(--surface) 60%, transparent);
+    stroke: var(--border);
+  }
+  .eng {
+    font: 600 14px var(--font-sans);
+    fill: var(--text);
+    text-anchor: middle;
+  }
+  .dim {
+    fill: var(--faint);
+    font-family: var(--font-mono);
+  }
+  .role {
+    font: 400 11.5px var(--font-mono);
+    fill: var(--faint);
+    text-anchor: middle;
+  }
+  .box {
+    fill: var(--surface-2);
+    stroke: var(--border-strong);
+  }
+  .box.delta {
+    stroke: var(--insert);
+  }
+  .box.input {
+    fill: var(--bg);
+  }
+  .t {
+    font: 600 13px var(--font-mono);
+    fill: var(--text);
+    text-anchor: middle;
+  }
+  .mono {
+    font: 500 11.5px var(--font-mono);
+    fill: var(--accent);
+  }
+  .flow path {
+    fill: none;
+    stroke: var(--faint);
+    stroke-width: 1.6;
+  }
+  .head {
+    fill: var(--faint);
+  }
+  .lbl {
+    font: 400 11px var(--font-mono);
+    fill: var(--faint);
+  }
+  .lbl.pink {
+    fill: var(--insert);
+  }
+  figcaption {
+    margin-top: 14px;
+    color: var(--faint);
+    font-size: 0.85rem;
+    max-width: 90ch;
+  }
+</style>

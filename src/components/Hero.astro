@@ -1,0 +1,104 @@
+---
+
+---
+
+<section class="hero">
+  <canvas
+    id="hero-canvas"
+    role="img"
+    aria-label="Animated query plan: insert and delete deltas flow from token_usage and agents through a join and an aggregate into the burn_by_agent materialized view, updating only the affected rows."
+  ></canvas>
+  <div class="container inner">
+    <div class="copy">
+      <p class="eyebrow">Incremental view maintenance, democratized</p>
+      <h1>
+        Stop recomputing.<br />
+        <span class="grad">Refresh only what changed.</span>
+      </h1>
+      <p class="lede">
+        OpenIVM compiles SQL materialized views into incremental SQL. Inserts, updates and deletes propagate as
+        deltas, so a refresh costs what changed, not what exists.
+      </p>
+      <div class="ctas">
+        <a class="btn btn-primary" href="/quickstart/">Quickstart</a>
+        <a class="btn" href="https://github.com/ila/openivm">View on GitHub</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { mountHeroPlan } from '../scripts/hero-plan';
+
+  const canvas = document.getElementById('hero-canvas');
+  if (canvas instanceof HTMLCanvasElement) mountHeroPlan(canvas);
+</script>
+
+<style>
+  /* Keep the breakpoint in sync with DESKTOP in hero-plan.ts. */
+  .hero {
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(900px 600px at 72% 45%, rgba(182, 156, 255, 0.12), transparent 70%),
+      radial-gradient(700px 400px at 5% 95%, rgba(255, 114, 198, 0.07), transparent 70%);
+    padding: 64px 0 24px;
+    display: flex;
+    flex-direction: column;
+  }
+  canvas {
+    order: 2;
+    display: block;
+    width: 100%;
+    height: clamp(380px, 82vw, 560px);
+    margin-top: 32px;
+  }
+  .inner {
+    position: relative;
+  }
+  .copy {
+    max-width: 560px;
+  }
+  h1 {
+    font-size: clamp(2.6rem, 6.4vw, 4.4rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.02;
+  }
+  .grad {
+    background: linear-gradient(90deg, var(--insert), var(--accent-2) 45%, var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .lede {
+    max-width: 52ch;
+  }
+  .ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 32px;
+  }
+
+  @media (min-width: 1100px) {
+    .hero {
+      min-height: min(88vh, 820px);
+      display: flex;
+      align-items: center;
+      padding: 72px 0;
+      /* Slide under the sticky nav; hero-plan.ts reserves the canvas's top 64px for it. */
+      margin-top: -64px;
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      height: 100%;
+      margin: 0;
+    }
+    .copy {
+      max-width: 520px;
+      padding-top: 64px;
+    }
+  }
+</style>

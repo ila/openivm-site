@@ -1,0 +1,217 @@
+---
+import Base from '../layouts/Base.astro';
+import CodeTabs from '../components/CodeTabs.astro';
+
+const build = `git clone --recurse-submodules https://github.com/ila/openivm.git
+cd openivm
+GEN=ninja make            # release build; plain \`make\` works without ninja
+
+# The built DuckDB CLI already loads OpenIVM
+./build/release/duckdb my.db`;
+
+const firstView = `CREATE TABLE sales (region VARCHAR, product VARCHAR, amount INT);
+INSERT INTO sales VALUES ('US', 'Widget', 100), ('EU', 'Gadget', 200);
+
+CREATE MATERIALIZED VIEW regional_totals AS
+    SELECT region, SUM(amount) AS total, COUNT(*) AS cnt
+    FROM sales GROUP BY region;
+
+-- Changes are captured as deltas automatically
+INSERT INTO sales VALUES ('US', 'Bolt', 50), ('JP', 'Gear', 300);
+DELETE FROM sales WHERE product = 'Gadget';
+
+PRAGMA refresh('regional_totals');
+
+SELECT * FROM regional_totals ORDER BY region;
+-- JP  | 300 | 1
+-- US  | 150 | 2        (EU is gone: its only row was deleted)`;
+
+const schedule = `-- Refresh in the background every 5 minutes
+CREATE MATERIALIZED VIEW regional_totals REFRESH EVERY '5 minutes' AS
+    SELECT region, SUM(amount) AS total, COUNT(*) AS cnt
+    FROM sales GROUP BY region;
+
+PRAGMA refresh_status('regional_totals');   -- interval, last / next refresh
+
+-- Let OpenIVM pick incremental vs full per refresh
+SET openivm_refresh_mode = 'auto';
+SET openivm_adaptive_refresh = true;          -- experimental learned cost model
+PRAGMA refresh_cost('regional_totals');       -- incremental vs recompute estimate`;
+
+const ducklake = `INSTALL ducklake;
+LOAD ducklake;
+ATTACH ':memory:' AS dl (TYPE ducklake);
+
+CREATE TABLE dl.orders (id INT, product VARCHAR, region VARCHAR, amount INT);
+
+-- Views stack into pipelines; DuckLake snapshots provide the deltas
+CREATE MATERIALIZED VIEW dl.product_totals REFRESH EVERY '5 minutes' AS
+    SELECT product, SUM(amount) AS total, COUNT(*) AS cnt
+    FROM dl.orders GROUP BY product;
+
+CREATE MATERIALIZED VIEW dl.top_products REFRESH EVERY '10 minutes' AS
+    SELECT product, total FROM dl.product_totals WHERE total > 1000;
+
+-- Refreshing product_totals also refreshes top_products
+SET openivm_cascade_refresh = 'downstream';   -- or 'upstream', 'both', 'off'`;
+
+const inspect = `-- Write every compiled statement to disk
+SET openivm_files_path = '/tmp/openivm';
+
+CREATE MATERIALIZED VIEW regional_totals AS
+    SELECT region, SUM(amount) AS total FROM sales GROUP BY region;
+PRAGMA refresh('regional_totals');
+
+-- /tmp/openivm/openivm_compiled_queries_regional_totals.sql   (DDL at CREATE time)
+-- /tmp/openivm/openivm_upsert_queries_regional_totals.sql     (the refresh SQL)
+
+-- Peek at pending changes
+SELECT * FROM openivm_delta_sales;`;
+
+const tabs = [
+  { label: 'First view', code: firstView, note: 'Create a view, change the base table, refresh. Only the new rows are processed.' },
+  { label: 'Scheduled refresh', code: schedule, note: 'Views with <code>REFRESH EVERY</code> are maintained by a background daemon.' },
+  { label: 'DuckLake pipelines', code: ducklake, note: 'Over <a href="https://ducklake.select/">DuckLake</a>, deltas come from native snapshots, with no duplicated storage.' },
+  { label: 'See the generated SQL', code: inspect, note: 'OpenIVM is a compiler: you can read exactly what it runs.' },
+  { label: 'Apache Spark', badge: 'soon', note: 'The Spark integration, with quickstarts and best practices for dbt workloads, is in development. <a href="https://github.com/ila/openivm/issues">Open an issue</a> to get involved.' },
+];
+
+const pragmas: [string, string][] = [
+  ["PRAGMA refresh('v')", 'Refresh a materialized view'],
+  ["PRAGMA refresh_status('v')", 'Refresh interval, last / next refresh, status'],
+  ["PRAGMA refresh_cost('v')", 'Incremental vs full recompute cost estimate'],
+  ["PRAGMA refresh_history('v')", 'Past refreshes (feeds the learned cost model)'],
+];
+
+const settings: [string, string, string][] = [
+  ['openivm_refresh_mode', 'incremental', "'incremental', 'full' or 'auto'"],
+  ['openivm_cascade_refresh', 'downstream', "Pipeline cascade: 'off', 'upstream', 'downstream', 'both'"],
+  ['openivm_adaptive_refresh', 'false', 'Pick incremental vs full per refresh with a cost model'],
+  ['openivm_disable_daemon', 'false', 'Turn off background REFRESH EVERY maintenance'],
+  ['openivm_files_path', '—', 'Directory for compiled SQL files'],
+  ['openivm_input_dialect', 'duckdb', "Dialect of view bodies, e.g. 'spark'"],
+];
+---
+
+<Base
+  title="Quickstart · OpenIVM"
+  description="Build the OpenIVM DuckDB extension, create your first incrementally maintained materialized view, and inspect the SQL it generates."
+>
+  <header class="page-head">
+    <div class="container">
+      <p class="eyebrow">Quickstart</p>
+      <h1>From zero to incremental in a few lines.</h1>
+      <p class="lede">
+        OpenIVM is under active testing and currently needs a source build against DuckDB v1.5.4. A DuckDB community
+        extension is planned for the end of 2026.
+      </p>
+    </div>
+  </header>
+
+  <section>
+    <div class="container">
+      <div class="step-head"><span class="num">1</span><h2>Build</h2></div>
+      <p class="lede">You need git, CMake ≥ 3.5, a C++ compiler, and optionally Ninja for faster builds.</p>
+      <CodeTabs id="build" label="Build" tabs={[{ label: 'Shell', code: build, lang: 'sh' }]} />
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="container">
+      <div class="step-head"><span class="num">2</span><h2>Create a view and refresh it</h2></div>
+      <CodeTabs id="qs" label="Quickstart examples" tabs={tabs} />
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <div class="step-head"><span class="num">3</span><h2>Reference</h2></div>
+      <div class="ref">
+        <div class="card table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Pragma</th><th>What it does</th></tr></thead>
+            <tbody>{pragmas.map(([p, d]) => <tr><td>{p}</td><td class="muted">{d}</td></tr>)}</tbody>
+          </table>
+        </div>
+        <div class="card table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Setting</th><th>Default</th><th>Description</th></tr></thead>
+            <tbody>
+              {
+                settings.map(([s, d, desc]) => (
+                  <tr>
+                    <td>{s}</td>
+                    <td class="mono muted">{d}</td>
+                    <td class="muted">{desc}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="links">
+        <a href="https://github.com/ila/openivm/blob/main/docs/build/building.md">Build guide</a>
+        <a href="https://github.com/ila/openivm/tree/main/docs">Full documentation</a>
+        <a href="https://github.com/ila/openivm/blob/main/docs/limitations.md">Limitations</a>
+        <a href="/how-it-works/">How it works →</a>
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .muted {
+    color: var(--muted);
+  }
+  .band {
+    background: var(--bg-2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  section .lede {
+    margin: 0 0 22px;
+  }
+  .step-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .step-head h2 {
+    font-size: clamp(1.5rem, 3vw, 2rem);
+  }
+  .num {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--on-insert);
+    background: var(--insert);
+    flex: none;
+  }
+  .ref {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 18px;
+    align-items: start;
+  }
+  .ref .card {
+    padding: 12px 16px;
+  }
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    margin-top: 24px;
+    font-size: 0.92rem;
+  }
+  @media (max-width: 960px) {
+    .ref {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

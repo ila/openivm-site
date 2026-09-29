@@ -1,0 +1,175 @@
+---
+// Where OpenIVM hooks into DuckDB (after Figures 1–2 of the SIGMOD 2024 demo paper).
+---
+
+<figure class="diagram">
+  <div class="scroll">
+    <svg viewBox="0 0 1040 340" role="img" aria-labelledby="arch-title arch-desc">
+      <title id="arch-title">OpenIVM inside DuckDB</title>
+      <desc id="arch-desc">
+        A CREATE MATERIALIZED VIEW statement enters DuckDB's parser. OpenIVM's fallback parser strips the
+        materialized-view options and stores metadata. After planning, OpenIVM's optimizer rules rebind scans to delta
+        tables and apply delta rules. The incremental plan either runs natively in DuckDB or is compiled back to SQL for
+        other engines such as PostgreSQL or Spark.
+      </desc>
+      <defs>
+        <marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 10 5 0 10z" class="head"></path>
+        </marker>
+      </defs>
+
+      <!-- lanes -->
+      <rect class="lane" x="210" y="16" width="590" height="124" rx="16"></rect>
+      <text class="lane-label" x="230" y="42">DuckDB</text>
+      <rect class="lane ext" x="210" y="176" width="820" height="148" rx="16"></rect>
+      <text class="lane-label ext" x="230" y="202">OpenIVM extension</text>
+
+      <!-- input -->
+      <rect class="box input" x="12" y="58" width="168" height="58" rx="10"></rect>
+      <text class="mono" x="26" y="82">CREATE MATERIALIZED</text>
+      <text class="mono" x="26" y="100">VIEW v AS …</text>
+
+      <!-- DuckDB core -->
+      <g class="core">
+        <rect class="box" x="236" y="62" width="120" height="50" rx="10"></rect>
+        <text class="t" x="296" y="92">parser</text>
+        <rect class="box" x="376" y="62" width="120" height="50" rx="10"></rect>
+        <text class="t" x="436" y="92">planner</text>
+        <rect class="box" x="516" y="62" width="120" height="50" rx="10"></rect>
+        <text class="t" x="576" y="92">optimizer</text>
+        <rect class="box" x="656" y="62" width="120" height="50" rx="10"></rect>
+        <text class="t" x="716" y="92">executor</text>
+      </g>
+
+      <!-- extension -->
+      <rect class="box ivm" x="226" y="218" width="160" height="84" rx="10"></rect>
+      <text class="t" x="306" y="244">fallback parser</text>
+      <text class="s" x="306" y="266">strips MV options,</text>
+      <text class="s" x="306" y="282">stores view metadata</text>
+
+      <rect class="box ivm" x="496" y="218" width="160" height="84" rx="10"></rect>
+      <text class="t" x="576" y="244">IVM optimizer rules</text>
+      <text class="s" x="576" y="266">delta model, lineage,</text>
+      <text class="s" x="576" y="282">operator rewriting</text>
+
+      <rect class="box ivm" x="760" y="218" width="170" height="84" rx="10"></rect>
+      <text class="t" x="845" y="244">LPTS</text>
+      <text class="s" x="845" y="266">plan → AST → CTEs</text>
+      <text class="s" x="845" y="282">→ target dialect</text>
+
+      <!-- targets -->
+      <rect class="box target" x="836" y="40" width="186" height="96" rx="10"></rect>
+      <text class="t" x="929" y="66">refresh SQL</text>
+      <text class="s" x="929" y="88">DuckDB · PostgreSQL</text>
+      <text class="s" x="929" y="106">Spark (soon) · …</text>
+
+      <!-- flow -->
+      <g class="flow">
+        <path d="M180 87H232" marker-end="url(#arch-arrow)"></path>
+        <path d="M356 87H372" marker-end="url(#arch-arrow)"></path>
+        <path d="M496 87H512" marker-end="url(#arch-arrow)"></path>
+        <path d="M636 87H652" marker-end="url(#arch-arrow)"></path>
+        <path d="M776 87H832" marker-end="url(#arch-arrow)"></path>
+        <path d="M656 260H756" marker-end="url(#arch-arrow)"></path>
+        <path d="M929 214V140" marker-end="url(#arch-arrow)"></path>
+      </g>
+      <g class="flow hook">
+        <path d="M282 112V214" marker-end="url(#arch-arrow)"></path>
+        <path d="M330 214V116" marker-end="url(#arch-arrow)"></path>
+        <path d="M552 112V214" marker-end="url(#arch-arrow)"></path>
+        <path d="M600 214V116" marker-end="url(#arch-arrow)"></path>
+      </g>
+      <text class="lbl" x="276" y="160" text-anchor="end">MV keywords</text>
+      <text class="lbl" x="336" y="160">clean SQL</text>
+      <text class="lbl" x="546" y="160" text-anchor="end">logical plan</text>
+      <text class="lbl" x="606" y="160">incremental plan</text>
+      <text class="lbl" x="804" y="78" text-anchor="middle">native</text>
+      <text class="lbl" x="706" y="252" text-anchor="middle">plan</text>
+    </svg>
+  </div>
+  <figcaption>
+    OpenIVM is a DuckDB extension: it plugs into the parser and the optimizer without modifying the core engine,
+    then compiles the incremental plan back to SQL through LPTS. Adapted from the SIGMOD 2024 demo paper.
+  </figcaption>
+</figure>
+
+<style>
+  .diagram {
+    margin: 0;
+  }
+  .scroll {
+    overflow-x: auto;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    min-width: 760px;
+    height: auto;
+  }
+  .lane {
+    fill: color-mix(in srgb, var(--surface) 60%, transparent);
+    stroke: var(--border);
+  }
+  .lane.ext {
+    stroke: color-mix(in srgb, var(--insert) 35%, transparent);
+    stroke-dasharray: 5 5;
+    fill: color-mix(in srgb, var(--insert) 4%, transparent);
+  }
+  .lane-label {
+    font: 600 13px var(--font-mono);
+    fill: var(--muted);
+    letter-spacing: 0.06em;
+  }
+  .lane-label.ext {
+    fill: var(--insert);
+  }
+  .box {
+    fill: var(--surface-2);
+    stroke: var(--border-strong);
+  }
+  .box.ivm {
+    stroke: var(--insert);
+  }
+  .box.target {
+    stroke: var(--accent);
+  }
+  .box.input {
+    fill: var(--bg);
+  }
+  .t {
+    font: 600 13px var(--font-mono);
+    fill: var(--text);
+    text-anchor: middle;
+  }
+  .s {
+    font: 400 11.5px var(--font-mono);
+    fill: var(--muted);
+    text-anchor: middle;
+  }
+  .mono {
+    font: 500 11.5px var(--font-mono);
+    fill: var(--accent);
+  }
+  .flow path {
+    fill: none;
+    stroke: var(--faint);
+    stroke-width: 1.6;
+  }
+  .flow.hook path {
+    stroke: var(--insert);
+    stroke-dasharray: 4 4;
+  }
+  .head {
+    fill: var(--faint);
+  }
+  .lbl {
+    font: 400 11px var(--font-mono);
+    fill: var(--faint);
+  }
+  figcaption {
+    margin-top: 14px;
+    color: var(--faint);
+    font-size: 0.85rem;
+    max-width: 90ch;
+  }
+</style>

@@ -1,0 +1,401 @@
+---
+import Base from '../layouts/Base.astro';
+import Hero from '../components/Hero.astro';
+
+const pillars = [
+  {
+    n: '01',
+    title: 'Rigor',
+    body: 'Best-effort, operator-by-operator matching does not scale. OpenIVM derives delta rules from the algebra of each operator (Z-sets, in the DBSP tradition), so a view is maintained exactly, or classified up front as needing a full refresh. A few misplaced CTEs should not throw it off.',
+    tag: 'Z-sets · delta rules',
+  },
+  {
+    n: '02',
+    title: 'State',
+    body: 'Incremental aggregates need somewhere to live between refreshes. OpenIVM keeps view state and auxiliary state as ordinary tables, so it works for batch tables, not only streams, and survives restarts without a separate state store.',
+    tag: 'aux state · delta tables',
+  },
+  {
+    n: '03',
+    title: 'Deletes',
+    body: 'Real pipelines update and delete. Every change is a signed tuple (+1 or −1), consolidated before refresh, so inserts, updates and deletes are handled by the same algebra instead of special cases.',
+    tag: '+1 / −1 multiplicities',
+  },
+];
+---
+
+<Base>
+  <Hero />
+
+  <section id="why" class="problem">
+    <div class="container problem-grid">
+      <div>
+        <p class="eyebrow">The problem</p>
+        <h2>ETL costs scale with your data. They should scale with your changes.</h2>
+      </div>
+      <div class="problem-body">
+        <p>
+          LLMs and declarative tools like dbt generate more queries than ever, and most of them recompute from
+          scratch on every run. The cost of goods sold for ETL goes through the roof.
+        </p>
+        <p>
+          Apache Spark is the primary ETL engine behind many lakehouses, yet there is no open standard, and no
+          competitively performant open-source engine, for incremental view maintenance.
+        </p>
+        <p class="strong">
+          OpenIVM is that open standard: an IVM compiler that integrates transparently with the engines you already
+          run.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="pillars-section">
+    <div class="container">
+      <div class="section-head">
+        <p class="eyebrow">What an IVM engine needs</p>
+        <h2>Three things, done properly.</h2>
+      </div>
+      <div class="pillars">
+        {
+          pillars.map((p) => (
+            <article class="card pillar">
+              <span class="n">{p.n}</span>
+              <h3>{p.title}</h3>
+              <p>{p.body}</p>
+              <span class="pill">{p.tag}</span>
+            </article>
+          ))
+        }
+      </div>
+      <p class="llm-note">
+        <span class="pill soon">LLM-ready</span>
+        A rigorous compiler gives agents a fast feedback loop: take any query, rewrite it to be deterministic,
+        verify the incremental plan in CI, and benchmark the savings automatically.
+      </p>
+    </div>
+  </section>
+
+  <section class="explore">
+    <div class="container explore-grid">
+      <a class="card explore-card" href="/how-it-works/">
+        <p class="eyebrow">How it works</p>
+        <h3>A SQL-to-SQL compiler for incremental computation</h3>
+        <p>Delta tables, Z-set algebra, and the exact SQL OpenIVM generates for a refresh.</p>
+        <span class="go">Read the internals →</span>
+      </a>
+      <a class="card explore-card" href="/quickstart/">
+        <p class="eyebrow">Quickstart</p>
+        <h3>From zero to incremental in a few lines</h3>
+        <p>Build the DuckDB extension, create a materialized view, and watch a refresh touch only the change.</p>
+        <span class="go">Get started →</span>
+      </a>
+    </div>
+  </section>
+
+  <section id="engines">
+    <div class="container">
+      <div class="section-head">
+        <p class="eyebrow">Engines</p>
+        <h2>One compiler, many engines.</h2>
+      </div>
+      <div class="engines">
+        <article class="card engine">
+          <div class="engine-top"><h3>DuckDB</h3><span class="pill ok">available · source build</span></div>
+          <p>
+            The reference implementation. Materialized views, automatic refresh, cascading pipelines, adaptive cost
+            model and DuckLake integration. Community extension planned for end of 2026.
+          </p>
+          <a href="https://github.com/ila/openivm">github.com/ila/openivm →</a>
+        </article>
+        <article class="card engine">
+          <div class="engine-top"><h3>Apache Spark</h3><span class="pill soon">in development</span></div>
+          <p>
+            Incremental refresh for Spark ETL and dbt models, including Spark-dialect view bodies such as
+            <code>VERSION AS OF</code>.
+          </p>
+          <span class="muted">Coming soon</span>
+        </article>
+        <article class="card engine">
+          <div class="engine-top"><h3>Your engine</h3><span class="pill">open standard</span></div>
+          <p>
+            OpenIVM emits SQL, not engine internals. If your engine speaks SQL and can store a table, it can host
+            an incremental view.
+          </p>
+          <a href="https://github.com/ila/openivm/issues">Propose an integration →</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="benchmark" class="bench">
+    <div class="container bench-grid">
+      <div>
+        <p class="eyebrow">Benchmark</p>
+        <h2>Open, reproducible numbers.</h2>
+        <p class="lede">
+          A live benchmark fed by <code>ivm-bench</code>: incremental refresh versus full recompute across engines,
+          workloads and delta sizes. Results are published as a static Parquet file and rendered right in your
+          browser.
+        </p>
+        <span class="pill soon" style="margin-top:22px">coming soon</span>
+      </div>
+      <div class="card bench-skeleton" aria-hidden="true">
+        <div class="bars">
+          {
+            [72, 18, 64, 12, 88, 22, 56, 9, 80, 15].map((h, i) => (
+              <span class={i % 2 ? 'b inc' : 'b full'} style={`height:${h}%`} />
+            ))
+          }
+        </div>
+        <div class="bench-legend">
+          <span><i class="full"></i>full recompute</span>
+          <span><i class="inc"></i>incremental</span>
+          <span class="muted">placeholder</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="research">
+    <div class="container">
+      <div class="card paper">
+        <p class="eyebrow">Research</p>
+        <h3>
+          <a href="https://dl.acm.org/doi/10.1145/3626246.3654743"
+            >OpenIVM: a SQL-to-SQL Compiler for Incremental Computations</a
+          >
+        </h3>
+        <p class="muted">SIGMOD Companion 2024 · doi:10.1145/3626246.3654743</p>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .muted {
+    color: var(--muted);
+  }
+
+  .problem {
+    border-top: 1px solid var(--border);
+  }
+  .problem-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+  }
+  .problem-body {
+    display: grid;
+    gap: 18px;
+    color: var(--muted);
+    font-size: 1.08rem;
+  }
+  .problem-body .strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .pillars-section {
+    padding-top: 0;
+  }
+  .pillars {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+  }
+  .pillar {
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .pillar p {
+    color: var(--muted);
+    font-size: 0.97rem;
+    flex: 1;
+  }
+  .pillar .pill {
+    align-self: flex-start;
+  }
+  .n {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--faint);
+  }
+  .pillar h3 {
+    font-size: 1.5rem;
+  }
+  .pillar:nth-child(1) h3 {
+    color: var(--accent);
+  }
+  .pillar:nth-child(2) h3 {
+    color: var(--accent-2);
+  }
+  .pillar:nth-child(3) h3 {
+    color: var(--insert);
+  }
+  .llm-note {
+    margin-top: 28px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 12px;
+    max-width: 80ch;
+  }
+
+  .explore {
+    padding-top: 0;
+  }
+  .explore-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  .explore-card {
+    padding: 32px;
+    display: grid;
+    gap: 12px;
+    color: var(--text);
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .explore-card:hover {
+    text-decoration: none;
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+  }
+  .explore-card .eyebrow {
+    margin: 0;
+  }
+  .explore-card h3 {
+    font-size: 1.35rem;
+  }
+  .explore-card p:not(.eyebrow) {
+    color: var(--muted);
+  }
+  .go {
+    color: var(--insert);
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-top: 6px;
+  }
+
+  #engines {
+    border-top: 1px solid var(--border);
+  }
+  .engines {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+  }
+  .engine {
+    padding: 26px;
+    display: grid;
+    gap: 14px;
+    align-content: start;
+  }
+  .engine-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .engine p {
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  .engine a,
+  .engine .muted {
+    font-size: 0.9rem;
+  }
+
+  .bench {
+    border-top: 1px solid var(--border);
+  }
+  .bench-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: center;
+  }
+  .bench-skeleton {
+    padding: 28px;
+  }
+  .bars {
+    height: 220px;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  .b {
+    flex: 1;
+    border-radius: 4px 4px 0 0;
+    opacity: 0.35;
+  }
+  .b.full {
+    background: var(--faint);
+  }
+  .b.inc {
+    background: var(--insert);
+    margin-right: 10px;
+  }
+  .bench-legend {
+    display: flex;
+    gap: 20px;
+    margin-top: 14px;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .bench-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .bench-legend .muted {
+    margin-left: auto;
+    color: var(--faint);
+    font-family: var(--font-mono);
+  }
+  .bench-legend i {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    opacity: 0.6;
+  }
+  .bench-legend i.full {
+    background: var(--faint);
+  }
+  .bench-legend i.inc {
+    background: var(--insert);
+  }
+
+  .research {
+    padding-top: 0;
+  }
+  .paper {
+    padding: 32px;
+  }
+  .paper h3 {
+    font-size: 1.3rem;
+    margin-bottom: 8px;
+  }
+  .paper h3 a {
+    color: var(--text);
+  }
+
+  @media (max-width: 860px) {
+    .problem-grid,
+    .bench-grid {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+    .pillars,
+    .engines,
+    .explore-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

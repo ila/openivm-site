@@ -1,0 +1,65 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer>
+  <div class="container foot">
+    <div>
+      <p class="brand">Open<b>IVM</b></p>
+      <p class="muted">Open-source incremental view maintenance. MIT licensed.</p>
+    </div>
+    <ul>
+      <li><a href="https://github.com/ila/openivm">DuckDB extension</a></li>
+      <li><a href="https://github.com/ila/openivm/tree/main/docs">Documentation</a></li>
+      <li><a href="https://dl.acm.org/doi/10.1145/3626246.3654743">SIGMOD 2024 paper</a></li>
+      <li><a href="https://github.com/ila/openivm/issues">Issues</a></li>
+    </ul>
+  </div>
+  <div class="container copy">© {year} OpenIVM contributors</div>
+</footer>
+
+<style>
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 48px 0 32px;
+    background: var(--bg-2);
+  }
+  .foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 32px;
+  }
+  .brand {
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 6px;
+  }
+  .brand b {
+    font-weight: 800;
+  }
+  .muted {
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 28px;
+    font-size: 0.92rem;
+  }
+  ul a {
+    color: var(--muted);
+  }
+  ul a:hover {
+    color: var(--text);
+  }
+  .copy {
+    margin-top: 32px;
+    color: var(--faint);
+    font-size: 0.82rem;
+  }
+</style>

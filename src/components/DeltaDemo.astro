@@ -1,0 +1,284 @@
+---
+
+---
+
+<div class="demo card" id="delta-demo">
+  <div class="toolbar">
+    <div class="actions">
+      <button type="button" data-act="insert" class="act ins">+ INSERT</button>
+      <button type="button" data-act="delete" class="act del">− DELETE</button>
+      <button type="button" data-act="refresh" class="act refresh">PRAGMA refresh</button>
+    </div>
+    <p class="stat" aria-live="polite" data-stat>Insert or delete a few rows, then refresh.</p>
+  </div>
+
+  <div class="panes">
+    <div class="pane">
+      <h4>sales <span class="hint">base table</span></h4>
+      <table>
+        <thead><tr><th>region</th><th class="num">amount</th></tr></thead>
+        <tbody data-base></tbody>
+      </table>
+    </div>
+    <div class="pane">
+      <h4>Δ sales <span class="hint">pending deltas</span></h4>
+      <table>
+        <thead><tr><th>±</th><th>region</th><th class="num">amount</th></tr></thead>
+        <tbody data-delta></tbody>
+      </table>
+      <p class="empty" data-delta-empty>No pending changes.</p>
+    </div>
+    <div class="pane">
+      <h4>regional_totals <span class="hint">materialized view</span></h4>
+      <table>
+        <thead><tr><th>region</th><th class="num">total</th><th class="num">cnt</th></tr></thead>
+        <tbody data-view></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  type Row = { id: number; region: string; amount: number };
+  type Delta = { sign: 1 | -1; row: Row };
+  type Group = { total: number; cnt: number };
+
+  const REGIONS = ['US', 'EU', 'JP', 'BR', 'IN'];
+  const MAX_BASE = 12;
+
+  const root = document.getElementById('delta-demo');
+  if (root) init(root);
+
+  function init(root: HTMLElement) {
+    const $ = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
+    const baseEl = $('[data-base]');
+    const deltaEl = $('[data-delta]');
+    const deltaEmpty = $('[data-delta-empty]');
+    const viewEl = $('[data-view]');
+    const statEl = $('[data-stat]');
+
+    let nextId = 1;
+    const mk = (region: string, amount: number): Row => ({ id: nextId++, region, amount });
+    let base: Row[] = [mk('US', 100), mk('EU', 200), mk('US', 50), mk('JP', 300), mk('EU', 75)];
+    let deltas: Delta[] = [];
+    const view = new Map<string, Group>();
+    for (const r of base) apply(view, r.region, r.amount, 1);
+
+    let flashRows = new Set<number>();
+    let flashGroups = new Set<string>();
+
+    function apply(m: Map<string, Group>, region: string, amount: number, sign: number) {
+      const g = m.get(region) ?? { total: 0, cnt: 0 };
+      g.total += sign * amount;
+      g.cnt += sign;
+      if (g.cnt === 0) m.delete(region);
+      else m.set(region, g);
+    }
+
+    function render() {
+      baseEl.innerHTML = base
+        .map((r) => `<tr class="${flashRows.has(r.id) ? 'flash-ins' : ''}"><td>${r.region}</td><td class="num">${r.amount}</td></tr>`)
+        .join('');
+      deltaEl.innerHTML = deltas
+        .map(
+          (d) =>
+            `<tr class="${d.sign > 0 ? 'd-ins' : 'd-del'}"><td>${d.sign > 0 ? '+1' : '−1'}</td><td>${d.row.region}</td><td class="num">${d.row.amount}</td></tr>`,
+        )
+        .join('');
+      deltaEmpty.hidden = deltas.length > 0;
+      viewEl.innerHTML = [...view.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(
+          ([k, g]) =>
+            `<tr class="${flashGroups.has(k) ? 'flash-view' : ''}"><td>${k}</td><td class="num">${g.total}</td><td class="num">${g.cnt}</td></tr>`,
+        )
+        .join('');
+      flashRows = new Set();
+      flashGroups = new Set();
+    }
+
+    function insert() {
+      if (base.length >= MAX_BASE) {
+        statEl.textContent = 'Table is full: delete a row or refresh.';
+        return;
+      }
+      const r = mk(REGIONS[Math.floor(Math.random() * REGIONS.length)]!, 10 * (1 + Math.floor(Math.random() * 30)));
+      base.push(r);
+      deltas.push({ sign: 1, row: r });
+      flashRows.add(r.id);
+      statEl.textContent = `${deltas.length} pending delta${deltas.length === 1 ? '' : 's'}.`;
+      render();
+    }
+
+    function remove() {
+      if (base.length === 0) return;
+      const idx = Math.floor(Math.random() * base.length);
+      const [r] = base.splice(idx, 1);
+      if (!r) return;
+      // An insert followed by a delete of the same tuple cancels out (Z-set consolidation).
+      const pending = deltas.findIndex((d) => d.sign === 1 && d.row.id === r.id);
+      if (pending >= 0) deltas.splice(pending, 1);
+      else deltas.push({ sign: -1, row: r });
+      statEl.textContent = `${deltas.length} pending delta${deltas.length === 1 ? '' : 's'}.`;
+      render();
+    }
+
+    function refresh() {
+      if (deltas.length === 0) {
+        statEl.textContent = 'Nothing to do: empty delta, refresh skipped.';
+        return;
+      }
+      const touched = new Set<string>();
+      for (const d of deltas) {
+        apply(view, d.row.region, d.row.amount, d.sign);
+        touched.add(d.row.region);
+      }
+      for (const k of touched) if (view.has(k)) flashGroups.add(k);
+      statEl.innerHTML = `Incremental: read <b>${deltas.length}</b> delta row${deltas.length === 1 ? '' : 's'}, updated <b>${touched.size}</b> group${touched.size === 1 ? '' : 's'}. A full recompute would rescan all <b>${base.length}</b> rows.`;
+      deltas = [];
+      render();
+    }
+
+    root.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-act]');
+      if (!btn) return;
+      ({ insert, delete: remove, refresh })[btn.dataset.act as 'insert' | 'delete' | 'refresh']();
+    });
+
+    render();
+  }
+</script>
+
+<style>
+  .demo {
+    padding: 20px;
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px 24px;
+    margin-bottom: 18px;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .act {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .act:hover {
+    border-color: var(--faint);
+  }
+  .act.ins {
+    color: var(--insert);
+  }
+  .act.del {
+    color: var(--delete);
+  }
+  .act.refresh {
+    color: var(--accent);
+  }
+  .act:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .stat {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  .stat :global(b) {
+    color: var(--text);
+  }
+  .panes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+  @media (max-width: 760px) {
+    .panes {
+      grid-template-columns: 1fr;
+    }
+  }
+  .pane {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    min-height: 220px;
+  }
+  h4 {
+    margin: 0 0 10px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .hint {
+    color: var(--faint);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    margin-left: 6px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+  }
+  th {
+    text-align: left;
+    color: var(--faint);
+    font-weight: 500;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 4px 6px;
+    color: var(--muted);
+  }
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .empty {
+    color: var(--faint);
+    font-size: 0.82rem;
+    padding: 10px 6px;
+  }
+  :global(#delta-demo .d-ins td) {
+    color: var(--insert);
+  }
+  :global(#delta-demo .d-del td) {
+    color: var(--delete);
+  }
+  :global(#delta-demo .flash-ins td) {
+    animation: flash-ins 1.2s ease-out;
+  }
+  :global(#delta-demo .flash-view td) {
+    animation: flash-view 1.4s ease-out;
+  }
+  @keyframes flash-ins {
+    from {
+      background: color-mix(in srgb, var(--insert) 22%, transparent);
+      color: var(--text);
+    }
+  }
+  @keyframes flash-view {
+    from {
+      background: color-mix(in srgb, var(--accent) 28%, transparent);
+      color: var(--text);
+    }
+  }
+</style>
