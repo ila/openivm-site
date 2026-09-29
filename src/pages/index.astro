@@ -6,19 +6,19 @@ const pillars = [
   {
     n: '01',
     title: 'Rigor',
-    body: 'Best-effort, operator-by-operator matching does not scale. OpenIVM derives delta rules from the algebra of each operator (Z-sets, in the DBSP tradition), so a view is maintained exactly, or classified up front as needing a full refresh. A few misplaced CTEs should not throw it off.',
+    body: 'Delta rules come from each operator\'s algebra (Z-sets, as in DBSP), not pattern matching: a view is maintained exactly, or classified up front for full refresh.',
     tag: 'Z-sets · delta rules',
   },
   {
     n: '02',
     title: 'State',
-    body: 'Incremental aggregates need somewhere to live between refreshes. OpenIVM keeps view state and auxiliary state as ordinary tables, so it works for batch tables, not only streams, and survives restarts without a separate state store.',
+    body: 'View and auxiliary state live in ordinary tables, so it works on batch tables, not only streams, and survives restarts.',
     tag: 'aux state · delta tables',
   },
   {
     n: '03',
     title: 'Deletes',
-    body: 'Real pipelines update and delete. Every change is a signed tuple (+1 or −1), consolidated before refresh, so inserts, updates and deletes are handled by the same algebra instead of special cases.',
+    body: 'Every change is a signed tuple (+1 or −1), so inserts, updates and deletes share one algebra instead of special cases.',
     tag: '+1 / −1 multiplicities',
   },
 ];
@@ -29,22 +29,15 @@ const pillars = [
 
   <section id="why" class="problem">
     <div class="container problem-grid">
-      <div>
-        <p class="eyebrow">The problem</p>
-        <h2>ETL costs scale with your data. They should scale with your changes.</h2>
-      </div>
+      <h2>ETL costs scale with your data. They should scale with your changes.</h2>
       <div class="problem-body">
         <p>
-          LLMs and declarative tools like dbt generate more queries than ever, and most of them recompute from
-          scratch on every run. The cost of goods sold for ETL goes through the roof.
-        </p>
-        <p>
-          Apache Spark is the primary ETL engine behind many lakehouses, yet there is no open standard, and no
-          competitively performant open-source engine, for incremental view maintenance.
+          LLMs and tools like dbt generate more queries than ever, and most of them recompute from scratch on every
+          run, while Spark, the ETL engine behind most lakehouses, has no open incremental alternative.
         </p>
         <p class="strong">
-          OpenIVM is that open standard: an IVM compiler that integrates transparently with the engines you already
-          run.
+          OpenIVM is an open-source IVM compiler that makes those queries refresh only what changed, inside the
+          engines you already run.
         </p>
       </div>
     </div>
@@ -53,8 +46,7 @@ const pillars = [
   <section class="pillars-section">
     <div class="container">
       <div class="section-head">
-        <p class="eyebrow">What an IVM engine needs</p>
-        <h2>Three things, done properly.</h2>
+        <h2>What an IVM engine needs, done properly.</h2>
       </div>
       <div class="pillars">
         {
@@ -68,27 +60,25 @@ const pillars = [
           ))
         }
       </div>
-      <p class="llm-note">
-        <span class="pill soon">LLM-ready</span>
-        A rigorous compiler gives agents a fast feedback loop: take any query, rewrite it to be deterministic,
-        verify the incremental plan in CI, and benchmark the savings automatically.
-      </p>
     </div>
   </section>
 
   <section class="explore">
     <div class="container explore-grid">
       <a class="card explore-card" href="/how-it-works/">
-        <p class="eyebrow">How it works</p>
-        <h3>A SQL-to-SQL compiler for incremental computation</h3>
-        <p>Delta tables, Z-set algebra, and the exact SQL OpenIVM generates for a refresh.</p>
+        <h3>How it works</h3>
+        <p>The Z-set model, the architecture, and the exact SQL OpenIVM generates for a refresh.</p>
         <span class="go">Read the internals →</span>
       </a>
       <a class="card explore-card" href="/quickstart/">
-        <p class="eyebrow">Quickstart</p>
-        <h3>From zero to incremental in a few lines</h3>
+        <h3>Quickstart</h3>
         <p>Build the DuckDB extension, create a materialized view, and watch a refresh touch only the change.</p>
         <span class="go">Get started →</span>
+      </a>
+      <a class="card explore-card" href="/compare/">
+        <h3>Compare</h3>
+        <p>How OpenIVM differs from pg_ivm, streaming databases, and warehouse materialized views.</p>
+        <span class="go">See the comparison →</span>
       </a>
     </div>
   </section>
@@ -96,7 +86,6 @@ const pillars = [
   <section id="engines">
     <div class="container">
       <div class="section-head">
-        <p class="eyebrow">Engines</p>
         <h2>One compiler, many engines.</h2>
       </div>
       <div class="engines">
@@ -111,7 +100,7 @@ const pillars = [
         <article class="card engine">
           <div class="engine-top"><h3>Apache Spark</h3><span class="pill soon">in development</span></div>
           <p>
-            Incremental refresh for Spark ETL and dbt models, including Spark-dialect view bodies such as
+            Incremental refresh for Spark ETL and dbt models, including Spark-dialect view bodies such as{' '}
             <code>VERSION AS OF</code>.
           </p>
           <span class="muted">Coming soon</span>
@@ -131,7 +120,6 @@ const pillars = [
   <section id="benchmark" class="bench">
     <div class="container bench-grid">
       <div>
-        <p class="eyebrow">Benchmark</p>
         <h2>Open, reproducible numbers.</h2>
         <p class="lede">
           A live benchmark fed by <code>ivm-bench</code>: incremental refresh versus full recompute across engines,
@@ -160,7 +148,6 @@ const pillars = [
   <section class="research">
     <div class="container">
       <div class="card paper">
-        <p class="eyebrow">Research</p>
         <h3>
           <a href="https://dl.acm.org/doi/10.1145/3626246.3654743"
             >OpenIVM: a SQL-to-SQL Compiler for Incremental Computations</a
@@ -184,6 +171,7 @@ const pillars = [
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 48px;
+    align-items: start;
   }
   .problem-body {
     display: grid;
@@ -235,22 +223,13 @@ const pillars = [
   .pillar:nth-child(3) h3 {
     color: var(--insert);
   }
-  .llm-note {
-    margin-top: 28px;
-    color: var(--muted);
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 12px;
-    max-width: 80ch;
-  }
 
   .explore {
     padding-top: 0;
   }
   .explore-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 18px;
   }
   .explore-card {
@@ -265,13 +244,10 @@ const pillars = [
     border-color: var(--border-strong);
     transform: translateY(-2px);
   }
-  .explore-card .eyebrow {
-    margin: 0;
-  }
   .explore-card h3 {
     font-size: 1.35rem;
   }
-  .explore-card p:not(.eyebrow) {
+  .explore-card p {
     color: var(--muted);
   }
   .go {

@@ -1,0 +1,262 @@
+---
+import Base from '../layouts/Base.astro';
+
+type Row = {
+  name: string;
+  href: string;
+  kind: string;
+  runs: string;
+  updates: string;
+  sql: string;
+  license: string;
+  self?: boolean;
+};
+
+// Summarized from each project's public docs and repository, September 2026.
+const rows: Row[] = [
+  {
+    name: 'OpenIVM',
+    href: 'https://github.com/ila/openivm',
+    kind: 'IVM compiler (SQL in, SQL out)',
+    runs: 'Inside your engine as an extension: DuckDB today, Spark in development',
+    updates: 'On demand (PRAGMA refresh) or on a schedule (REFRESH EVERY)',
+    sql: 'Inner and outer joins, aggregates, DISTINCT, semi/anti joins, windows, CTEs; other shapes fall back to full refresh',
+    license: 'MIT',
+    self: true,
+  },
+  {
+    name: 'pg_ivm',
+    href: 'https://github.com/sraoss/pg_ivm',
+    kind: 'PostgreSQL extension',
+    runs: 'Inside PostgreSQL',
+    updates: 'Immediately, in AFTER triggers in the same transaction as each write',
+    sql: 'Joins, count/sum/avg/min/max, DISTINCT, EXISTS, simple CTEs; no window functions, HAVING, UNION, or aggregates over outer joins',
+    license: 'PostgreSQL License',
+  },
+  {
+    name: 'Materialize',
+    href: 'https://materialize.com/',
+    kind: 'Streaming data warehouse (Differential Dataflow)',
+    runs: 'Separate system, fed by change data capture or Kafka',
+    updates: 'Continuously, as changes arrive',
+    sql: 'Broad SQL, maintained as streaming dataflows',
+    license: 'Business Source License (source-available)',
+  },
+  {
+    name: 'Feldera',
+    href: 'https://www.feldera.com/',
+    kind: 'IVM engine built on DBSP',
+    runs: 'Separate pipeline engine',
+    updates: 'Continuously, as changes arrive',
+    sql: 'Broad SQL, compiled to DBSP circuits',
+    license: 'MIT (open-source edition)',
+  },
+  {
+    name: 'RisingWave',
+    href: 'https://risingwave.com/',
+    kind: 'Streaming database',
+    runs: 'Separate system, PostgreSQL wire protocol',
+    updates: 'Continuously, as changes arrive',
+    sql: 'Broad streaming SQL',
+    license: 'Apache 2.0',
+  },
+  {
+    name: 'Snowflake Dynamic Tables',
+    href: 'https://docs.snowflake.com/en/user-guide/dynamic-tables-about',
+    kind: 'Managed warehouse feature',
+    runs: 'Inside Snowflake',
+    updates: 'To a target lag; each refresh is incremental or full',
+    sql: 'Documented list of incrementally refreshable constructs',
+    license: 'Proprietary',
+  },
+  {
+    name: 'Databricks materialized views',
+    href: 'https://docs.databricks.com/aws/en/optimizations/incremental-refresh',
+    kind: 'Managed lakehouse feature',
+    runs: 'Inside Databricks, on serverless pipelines',
+    updates: 'On a schedule or trigger; incremental when possible, best effort',
+    sql: 'Documented list of incrementally refreshable constructs',
+    license: 'Proprietary',
+  },
+];
+
+const cols: [keyof Row, string][] = [
+  ['kind', 'What it is'],
+  ['runs', 'Where it runs'],
+  ['updates', 'When views update'],
+  ['sql', 'Incremental SQL coverage'],
+  ['license', 'License'],
+];
+---
+
+<Base
+  title="Compare · OpenIVM"
+  description="How OpenIVM compares with pg_ivm, Materialize, Feldera, RisingWave, Snowflake Dynamic Tables and Databricks materialized views."
+>
+  <header class="page-head">
+    <div class="container">
+      <p class="eyebrow">Compare</p>
+      <h1>Where OpenIVM fits.</h1>
+      <p class="lede">
+        Most incremental systems are either a separate streaming engine you feed with change data, or a feature of one
+        managed warehouse. OpenIVM is a compiler that runs inside the engine you already use and emits plain SQL.
+      </p>
+    </div>
+  </header>
+
+  <section>
+    <div class="container">
+      <div class="card table-wrap">
+        <table class="cmp">
+          <thead>
+            <tr>
+              <th scope="col"><span class="visually-hidden">System</span></th>
+              {cols.map(([, label]) => <th scope="col">{label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {
+              rows.map((r) => (
+                <tr class:list={[{ self: r.self }]}>
+                  <th scope="row">
+                    <a href={r.href}>{r.name}</a>
+                  </th>
+                  {cols.map(([k]) => <td>{r[k] as string}</td>)}
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        Summarized from each project's public documentation and repository, September 2026. Spotted something out of
+        date? <a href="https://github.com/ila/openivm-site/issues">Open an issue</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="container two">
+      <div>
+        <h2>What sets OpenIVM apart.</h2>
+        <ul class="points">
+          <li>
+            <b>The output is SQL.</b> The maintenance program is ordinary SQL you can read, test and run elsewhere, not
+            a runtime you have to operate. <a href="/how-it-works/">See what it generates</a>.
+          </li>
+          <li>
+            <b>No second system.</b> No change-data-capture pipeline or separate cluster: views are maintained inside
+            DuckDB, and soon Spark, over ordinary batch tables.
+          </li>
+          <li>
+            <b>Open and research-backed.</b> MIT-licensed, built at CWI Amsterdam, and described in a{' '}
+            <a href="https://dl.acm.org/doi/10.1145/3626246.3654743">SIGMOD 2024 paper</a>.
+          </li>
+        </ul>
+      </div>
+      <div>
+        <h2>When something else fits better.</h2>
+        <ul class="points">
+          <li>
+            <b>You need freshness on every write.</b> A streaming system (Materialize, Feldera, RisingWave) or
+            pg_ivm's immediate maintenance updates views as changes arrive; OpenIVM refreshes on demand or on a schedule.
+          </li>
+          <li>
+            <b>You want a managed service on your warehouse.</b> Snowflake Dynamic Tables and Databricks materialized
+            views are built into those platforms.
+          </li>
+          <li>
+            <b>Your query is a small single-table aggregate.</b> DuckDB recomputes these so fast that incremental
+            refresh has little to win; the gains come with joins and larger data.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .band {
+    background: var(--bg-2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .table-wrap {
+    padding: 6px 10px;
+  }
+  .cmp {
+    width: 100%;
+    min-width: 960px;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  .cmp th,
+  .cmp td {
+    text-align: left;
+    vertical-align: top;
+    padding: 14px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cmp thead th {
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  .cmp tbody tr:last-child th,
+  .cmp tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .cmp tbody th {
+    font-weight: 600;
+    min-width: 130px;
+  }
+  .cmp tbody th a {
+    color: var(--text);
+  }
+  .cmp td {
+    color: var(--muted);
+  }
+  .cmp tr.self th a {
+    color: var(--insert);
+  }
+  .cmp tr.self td {
+    color: var(--text);
+  }
+  .cmp tr.self {
+    background: color-mix(in srgb, var(--insert) 5%, transparent);
+  }
+  .note {
+    margin-top: 16px;
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+  .two {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+  }
+  .two h2 {
+    font-size: clamp(1.4rem, 2.6vw, 1.9rem);
+    margin-bottom: 20px;
+  }
+  .points {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 16px;
+    color: var(--muted);
+  }
+  .points b {
+    color: var(--text);
+  }
+  @media (max-width: 860px) {
+    .two {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+  }
+</style>

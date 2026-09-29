@@ -33,9 +33,11 @@ CREATE MATERIALIZED VIEW regional_totals REFRESH EVERY '5 minutes' AS
 
 PRAGMA refresh_status('regional_totals');   -- interval, last / next refresh
 
--- Let OpenIVM pick incremental vs full per refresh
-SET openivm_refresh_mode = 'auto';
-SET openivm_adaptive_refresh = true;          -- experimental learned cost model
+-- The daemon reads global settings
+SET GLOBAL openivm_adaptive_backoff = true;   -- back off when a refresh outlasts its interval
+
+-- Let a cost model pick incremental vs full per refresh (experimental)
+SET GLOBAL openivm_adaptive_refresh = true;
 PRAGMA refresh_cost('regional_totals');       -- incremental vs recompute estimate`;
 
 const ducklake = `INSTALL ducklake;
@@ -70,7 +72,7 @@ SELECT * FROM openivm_delta_sales;`;
 
 const tabs = [
   { label: 'First view', code: firstView, note: 'Create a view, change the base table, refresh. Only the new rows are processed.' },
-  { label: 'Scheduled refresh', code: schedule, note: 'Views with <code>REFRESH EVERY</code> are maintained by a background daemon.' },
+  { label: 'Scheduled refresh', code: schedule, note: 'Views with <code>REFRESH EVERY</code> are maintained by a background daemon, which only sees settings made with <code>SET GLOBAL</code>.' },
   { label: 'DuckLake pipelines', code: ducklake, note: 'Over <a href="https://ducklake.select/">DuckLake</a>, deltas come from native snapshots, with no duplicated storage.' },
   { label: 'See the generated SQL', code: inspect, note: 'OpenIVM is a compiler: you can read exactly what it runs.' },
   { label: 'Apache Spark', badge: 'soon', note: 'The Spark integration, with quickstarts and best practices for dbt workloads, is in development. <a href="https://github.com/ila/openivm/issues">Open an issue</a> to get involved.' },
@@ -84,9 +86,9 @@ const pragmas: [string, string][] = [
 ];
 
 const settings: [string, string, string][] = [
-  ['openivm_refresh_mode', 'incremental', "'incremental', 'full' or 'auto'"],
+  ['openivm_refresh_mode', 'incremental', "Set to 'full' to force full recompute; any other value refreshes incrementally"],
   ['openivm_cascade_refresh', 'downstream', "Pipeline cascade: 'off', 'upstream', 'downstream', 'both'"],
-  ['openivm_adaptive_refresh', 'false', 'Pick incremental vs full per refresh with a cost model'],
+  ['openivm_adaptive_refresh', 'false', 'Pick incremental vs full per refresh with a cost model (experimental)'],
   ['openivm_disable_daemon', 'false', 'Turn off background REFRESH EVERY maintenance'],
   ['openivm_files_path', '—', 'Directory for compiled SQL files'],
   ['openivm_input_dialect', 'duckdb', "Dialect of view bodies, e.g. 'spark'"],
@@ -168,6 +170,9 @@ const settings: [string, string, string][] = [
     background: var(--bg-2);
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
+  }
+  section {
+    padding: clamp(36px, 5vw, 60px) 0;
   }
   section .lede {
     margin: 0 0 22px;

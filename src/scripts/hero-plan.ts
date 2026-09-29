@@ -498,7 +498,7 @@ export function mountHeroPlan(canvas: HTMLCanvasElement): () => void {
     canvas.height = Math.round(H * d);
     // Desktop: plan lives in the right half, beside the headline.
     // Smaller screens: the canvas sits below the copy and the plan fills it.
-    const region = W >= DESKTOP ? { x: W * 0.47, y: 64, w: W * 0.53 - 16, h: H - 64 } : { x: 0, y: 0, w: W, h: H };
+    const region = W >= DESKTOP ? { x: W * 0.47 - 32, y: 64, w: W * 0.53 - 16, h: H - 64 } : { x: 0, y: 0, w: W, h: H };
     scale = Math.min(region.w / VW, region.h / VH, 1.2);
     ox = region.x + (region.w - VW * scale) / 2;
     oy = region.y + (region.h - VH * scale) / 2;

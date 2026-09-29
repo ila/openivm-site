@@ -5,31 +5,8 @@ import DeltaDemo from '../components/DeltaDemo.astro';
 import ArchDiagram from '../components/ArchDiagram.astro';
 import CrossSystemDiagram from '../components/CrossSystemDiagram.astro';
 
-const steps = [
-  {
-    k: 'Define',
-    t: 'Write a normal view',
-    d: '<code>CREATE MATERIALIZED VIEW</code> with standard SQL: joins, aggregates, CTEs, subqueries.',
-  },
-  {
-    k: 'Compile',
-    t: 'SQL → incremental SQL',
-    d: 'The logical plan is classified operator by operator and rewritten into delta propagation rules. The output is plain SQL.',
-  },
-  {
-    k: 'Capture',
-    t: 'Track changes as deltas',
-    d: 'An optimizer rule intercepts DML on base tables and writes signed rows to <code>openivm_delta_&lt;table&gt;</code>, or reads DuckLake snapshots.',
-  },
-  {
-    k: 'Refresh',
-    t: 'Merge only the change',
-    d: 'On demand or on a schedule, consolidated deltas are pushed through the compiled SQL and merged into the view. Pipelines cascade.',
-  },
-];
-
-// Real output from the DuckDB extension (SET openivm_files_path), lightly reformatted:
-// catalog prefixes and literal timestamps elided.
+// Output of the DuckDB extension at main ac39a1f0 (SET openivm_files_path). Internal names use the view key,
+// abbreviated to <key>; catalog prefixes and literal timestamps are elided, long statements are wrapped.
 const compiled = [
   {
     label: '1 · Your view',
@@ -41,27 +18,25 @@ const compiled = [
   },
   {
     label: '2 · Setup DDL',
-    note: 'The view is stored in <code>openivm_data_regional_totals</code> with a hidden helper column (the non-NULL count behind <code>SUM</code>, so a group that loses all its values returns NULL, not 0). A plain view hides it; a delta table is created for <code>sales</code>.',
-    code: `CREATE TABLE openivm_data_regional_totals AS
+    note: 'The view is stored in <code>openivm_data_&lt;key&gt;</code> with a hidden non-NULL count, so a group that loses all its values returns NULL rather than 0. Readers see <code>openivm_visible_&lt;key&gt;</code>, the published result, through a plain view. Changes to <code>sales</code> are captured in <code>openivm_delta_sales</code>.',
+    code: `CREATE TABLE openivm_data_<key> AS
 SELECT    region, sum(amount) AS total, count_star() AS cnt,
           count(amount) AS openivm_nonnull_sum_count_1
 FROM      sales
 GROUP BY  region;
 
+CREATE TABLE openivm_visible_<key> AS
+    SELECT * EXCLUDE (openivm_nonnull_sum_count_1), CAST(0 AS BIGINT) AS openivm_ordinal
+    FROM openivm_data_<key>;
+
 CREATE VIEW regional_totals AS
-    SELECT * EXCLUDE (openivm_nonnull_sum_count_1) FROM openivm_data_regional_totals;
+    SELECT * EXCLUDE (openivm_ordinal) FROM openivm_visible_<key>;
 
-CREATE TABLE IF NOT EXISTS openivm_delta_sales AS
-    SELECT *, 1::INTEGER AS openivm_multiplicity,
-           make_timestamp(epoch_us(now())) AS openivm_timestamp
-    FROM sales LIMIT 0;
-
-CREATE UNIQUE INDEX openivm_data_regional_totalsopenivm_index
-    ON openivm_data_regional_totals(region);`,
+CREATE UNIQUE INDEX openivm_data_<key>openivm_index ON openivm_data_<key>(region);`,
   },
   {
     label: '3 · ΔT → ΔV',
-    note: 'On refresh, only rows newer than the view\'s cursor are read. Duplicate deltas are consolidated first (a +1 and a −1 for the same tuple cancel), then the aggregate is applied to the delta itself, keeping the multiplicity as a group key.',
+    note: "On refresh, only rows newer than the view's cursor are read. Duplicate deltas are consolidated first (a +1 and a −1 for the same tuple cancel), then the aggregate is applied to the delta itself, keeping the multiplicity as a group key.",
     code: `WITH
 t0_scan (t0_region, t0_amount, t0_openivm_multiplicity) AS (
     SELECT  region, amount, openivm_multiplicity
@@ -80,23 +55,23 @@ t2_block (t2_region, total, cnt, openivm_nonnull_sum_count_1, t1_openivm_multipl
     WHERE     t9_openivm_multiplicity != 0
     GROUP BY  t8_region, CAST(t9_openivm_multiplicity AS INTEGER)
 )
-INSERT INTO openivm_delta_regional_totals
+INSERT INTO openivm_delta_<key>
     (region, total, cnt, openivm_nonnull_sum_count_1, openivm_multiplicity)
 SELECT * FROM t2_block;`,
   },
   {
     label: '4 · ΔV → V',
-    note: 'The view\'s own delta is folded with <code>SUM(multiplicity × value)</code> and merged on the group key. Groups whose count drops to zero are deleted. Downstream views can consume <code>openivm_delta_regional_totals</code> before it is cleared.',
+    note: "The view's delta is folded with <code>SUM(multiplicity × value)</code> and merged on the group key; groups whose count drops to zero are deleted.",
     code: `WITH refresh_cte AS (
     SELECT region,
            sum(openivm_multiplicity * total) AS total,
            sum(openivm_multiplicity * cnt)   AS cnt,
            sum(openivm_multiplicity * openivm_nonnull_sum_count_1) AS openivm_nonnull_sum_count_1
-    FROM   openivm_delta_regional_totals
+    FROM   openivm_delta_<key>
     WHERE  openivm_timestamp > $last_update
     GROUP BY region
 )
-MERGE INTO openivm_data_regional_totals v USING refresh_cte d
+MERGE INTO openivm_data_<key> v USING refresh_cte d
 ON v.region IS NOT DISTINCT FROM d.region
 WHEN MATCHED THEN UPDATE SET
     total = CASE WHEN COALESCE(v.openivm_nonnull_sum_count_1 + d.openivm_nonnull_sum_count_1,
@@ -109,12 +84,30 @@ WHEN MATCHED THEN UPDATE SET
 WHEN NOT MATCHED THEN INSERT (region, total, cnt, openivm_nonnull_sum_count_1)
     VALUES (d.region, d.total, d.cnt, d.openivm_nonnull_sum_count_1);
 
-DELETE FROM openivm_data_regional_totals WHERE COALESCE(cnt, 0) = 0;`,
+DELETE FROM openivm_data_<key> WHERE COALESCE(cnt, 0) = 0;`,
   },
   {
-    label: '5 · Cleanup',
+    label: '5 · Publish',
+    note: 'Only the affected groups are compared with the published table. Their signed difference replaces the old visible rows and is recorded as a delta, which is what downstream views consume.',
+    code: `CREATE TEMP TABLE openivm_publish_changes_<key> AS
+SELECT region, total, cnt, openivm_ordinal, SUM(openivm_publish_weight) AS openivm_publish_weight
+FROM (
+    SELECT *, -1 AS openivm_publish_weight            -- old visible rows of affected groups
+    FROM openivm_visible_<key> v
+    WHERE EXISTS (SELECT 1 FROM openivm_delta_<key> d WHERE v.region IS NOT DISTINCT FROM d.region)
+    UNION ALL
+    SELECT *, +1 FROM openivm_publish_next_<key>      -- their new rows
+) signed_rows
+GROUP BY region, total, cnt, openivm_ordinal
+HAVING SUM(openivm_publish_weight) <> 0;
+
+-- then: append the signed changes to openivm_delta_openivm_visible_<key>,
+-- delete the old rows from openivm_visible_<key> and insert the new ones`,
+  },
+  {
+    label: '6 · Cleanup',
     note: 'Consumed deltas are removed once every dependent view has moved past them, and the cursor advances to <code>MAX(timestamp) + 1µs</code> of what this refresh actually saw, not <code>now()</code>, so a concurrent insert is never skipped or applied twice.',
-    code: `DELETE FROM openivm_delta_regional_totals;
+    code: `DELETE FROM openivm_delta_<key>;
 
 DELETE FROM openivm_delta_sales
 WHERE openivm_timestamp < (SELECT MIN(last_update) FROM openivm_delta_tables
@@ -125,7 +118,7 @@ SET last_update = COALESCE((SELECT MAX(openivm_timestamp) + INTERVAL '1 microsec
                             FROM openivm_delta_sales),
                            make_timestamp(epoch_us(now()))),
     last_refresh_ts = make_timestamp(epoch_us(now()))
-WHERE view_name = 'regional_totals' AND table_name = 'openivm_delta_sales';`,
+WHERE view_name = '<key>' AND table_name = 'openivm_delta_sales';`,
   },
 ];
 
@@ -135,51 +128,20 @@ const deltaRows: [string, string, number, number][] = [
   ['EU', 'Gadget', 200, -1],
 ];
 
-const classes = [
-  {
-    k: 'LINEAR',
-    rule: 'Δ(Q(R)) = Q(ΔR)',
-    ops: 'scan, projection, filter, UNION ALL, SUM, COUNT',
-    cost: 'proportional to |Δ|, no extra state',
-  },
-  {
-    k: 'BILINEAR',
-    rule: 'Δ(R ⋈ S) = ΔR ⋈ S + R ⋈ ΔS − ΔR ⋈ ΔS',
-    ops: 'INNER, CROSS, LEFT, RIGHT, FULL OUTER JOIN',
-    cost: '2ᴺ − 1 terms for N tables (or N with telescoping)',
-  },
-  {
-    k: 'NON_LINEAR',
-    rule: 'needs accumulated state',
-    ops: 'DISTINCT, SEMI / ANTI JOIN, MIN / MAX with deletes, window functions',
-    cost: 'aux state, or recompute of affected groups / partitions',
-  },
-  {
-    k: 'FULL_ONLY',
-    rule: 'no delta rule',
-    ops: 'anything else',
-    cost: 'detected at CREATE time; full refresh',
-  },
-];
-
-const operators: [string, string][] = [
-  ['Projection, filter, expressions', 'incremental'],
-  ['GROUP BY · SUM, COUNT, AVG, STDDEV, VARIANCE', 'incremental'],
-  ['MIN / MAX', 'incremental (insert-only) · group recompute'],
-  ['HAVING, ungrouped aggregates, LIST', 'incremental'],
-  ['INNER, CROSS, LEFT, RIGHT JOIN', 'incremental'],
-  ['FULL OUTER JOIN', 'incremental (merge + recompute)'],
-  ['SEMI / ANTI JOIN, EXISTS, NOT EXISTS', 'aux-state incremental'],
-  ['UNION ALL, DISTINCT', 'incremental'],
-  ['Window functions', 'partition-level recompute'],
-  ['CTEs, decorrelated & scalar subqueries', 'incremental when the lowered plan is'],
-  ['Anything else', 'full refresh'],
+const DOCS = 'https://github.com/ila/openivm/blob/main/docs';
+const deeper = [
+  { t: 'Delta rules', d: 'How each operator is classified (linear, product, stateful, non-linear) and what state it needs.', href: `${DOCS}/internals/linearity.md` },
+  { t: 'Operator coverage', d: 'Joins, aggregates, DISTINCT, semi/anti, windows, top-k: the delta rule and refresh strategy for each.', href: 'https://github.com/ila/openivm/tree/main/docs/operators' },
+  { t: 'Optimizations', d: 'Empty-delta skipping, delta consolidation, insert-only fast paths, FK-aware pruning.', href: 'https://github.com/ila/openivm/tree/main/docs/optimizations' },
+  { t: 'Refresh and pipelines', d: 'Refresh strategies, scheduled refresh, cascades and pipeline refresh.', href: 'https://github.com/ila/openivm/tree/main/docs/refresh' },
+  { t: 'Limitations', d: 'What falls back to full refresh today, and why.', href: `${DOCS}/limitations.md` },
+  { t: 'The paper', d: 'OpenIVM: a SQL-to-SQL Compiler for Incremental Computations. SIGMOD Companion 2024.', href: 'https://dl.acm.org/doi/10.1145/3626246.3654743' },
 ];
 ---
 
 <Base
   title="How it works · OpenIVM"
-  description="How OpenIVM compiles SQL materialized views into incremental SQL: delta tables, Z-set multiplicities, delta rules per operator, and the exact SQL generated for a refresh."
+  description="How OpenIVM compiles SQL materialized views into incremental SQL: the Z-set model, delta tables, the architecture inside DuckDB, and the exact SQL generated for a refresh."
 >
   <header class="page-head">
     <div class="container">
@@ -192,37 +154,18 @@ const operators: [string, string][] = [
     </div>
   </header>
 
-  <section>
-    <div class="container">
-      <ol class="steps">
-        {
-          steps.map((s, i) => (
-            <li class="card step">
-              <span class="k">
-                {String(i + 1).padStart(2, '0')} · {s.k}
-              </span>
-              <h3>{s.t}</h3>
-              <p set:html={s.d} />
-            </li>
-          ))
-        }
-      </ol>
-    </div>
-  </section>
-
   <section class="band">
     <div class="container model">
       <div>
-        <p class="eyebrow">The model</p>
         <h2>IVM in one equation.</h2>
         <p class="lede">
-          Given a table <var>T</var> and a view <var>V</var> = <var>Q</var>(<var>T</var>), find a function
+          Given a table <var>T</var> and a view <var>V</var> = <var>Q</var>(<var>T</var>), find a function{' '}
           <var>f</var> so that <var>f</var>(Δ<var>T</var>) = Δ<var>V</var>: compute the change to the view from the
           change to the table alone, instead of re-running <var>Q</var>.
         </p>
         <p class="lede">
           OpenIVM follows <a href="https://arxiv.org/abs/2203.16684">DBSP</a>, which gives such an <var>f</var> for
-          arbitrary relational queries using two operators: differentiation <b>D</b> (Δ<var>T</var> = <var>T′</var> −
+          arbitrary relational queries using two operators: differentiation <b>D</b> (Δ<var>T</var> = <var>T′</var> −{' '}
           <var>T</var>) and integration <b>I</b> (<var>T</var> + Δ<var>T</var> = <var>T′</var>). Each operator is
           replaced by its incremental form, and the plan runs over deltas.
         </p>
@@ -235,10 +178,11 @@ const operators: [string, string][] = [
         </div>
         <p class="eq-note">Selection and projection are their own incremental form; a join becomes three joins.</p>
         <div class="zs">
-          <p class="zs-title">Z-sets: every row carries an integer weight, and <var>R</var><sub>new</sub> = <var>R</var><sub>old</sub> + Δ<var>R</var></p>
-          <div class="zs-row"><span class="zs-k"><var>V</var></span><code>{'{'} apple → 5, banana → 2 {'}'}</code></div>
-          <div class="zs-row"><span class="zs-k">Δ<var>V</var></span><code>{'{'} apple → <span class="minus">−3</span>, banana → <span class="plus">+1</span> {'}'}</code></div>
-          <div class="zs-row sum"><span class="zs-k"><var>V</var> + Δ<var>V</var></span><code>{'{'} apple → 2, banana → 3 {'}'}</code></div>
+          <p class="zs-title">Changes add up: <var>R</var><sub>new</sub> = <var>R</var><sub>old</sub> + Δ<var>R</var>. For <code>regional_totals</code> (region → total):</p>
+          <div class="zs-row"><span class="zs-k"><var>V</var></span><code>{'{'} US → 100, EU → 200 {'}'}</code></div>
+          <div class="zs-row"><span class="zs-k">Δ<var>V</var></span><code>{'{'} US → <span class="plus">+50</span>, JP → <span class="plus">+300</span>, EU → <span class="minus">−200</span> {'}'}</code></div>
+          <div class="zs-row sum"><span class="zs-k"><var>V</var> + Δ<var>V</var></span><code>{'{'} US → 150, JP → 300 {'}'}</code></div>
+          <p class="eq-note">EU drops out: its only sale was deleted, so its row count reaches zero.</p>
         </div>
         <div class="alg">
           <p class="zs-title">…and every algebraic step is plain SQL</p>
@@ -253,12 +197,11 @@ const operators: [string, string][] = [
   <section>
     <div class="container zset">
       <div>
-        <p class="eyebrow">Delta tables</p>
         <h2>Every change is a weighted row.</h2>
         <p class="lede">
-          A delta table has the same columns as its source, plus a signed weight. An <code>INSERT</code> writes
-          <code class="plus">+1</code>, a <code>DELETE</code> writes <code class="minus">−1</code>, and an
-          <code>UPDATE</code> writes both (old row −1, new row +1) in one atomic insert. Operators then work on these
+          A delta table has the same columns as its source, plus a signed weight. An <code>INSERT</code> writes{' '}
+          <code class="plus">+1</code>, a <code>DELETE</code> writes <code class="minus">−1</code>, and an{' '}
+          <code>UPDATE</code> writes both (old row −1, new row +1), inside the same transaction as the DML. Operators then work on these
           weights algebraically: aggregates sum <code>weight × value</code>, joins multiply weights.
         </p>
         <p class="lede">
@@ -300,7 +243,6 @@ const operators: [string, string][] = [
   <section class="band">
     <div class="container">
       <div class="section-head">
-        <p class="eyebrow">Architecture</p>
         <h2>A real engine underneath.</h2>
         <p class="lede">
           Most IVM compilers are detached prototypes that talk to a database through drivers. OpenIVM lives inside
@@ -327,14 +269,14 @@ const operators: [string, string][] = [
   <section>
     <div class="container">
       <div class="section-head">
-        <p class="eyebrow">Generated SQL</p>
         <h2>What a refresh actually runs.</h2>
         <p class="lede">
-          One view definition becomes several SQL statements: create the deltas, compute Δ<var>V</var> from
-          Δ<var>T</var>, fold Δ<var>V</var> into <var>V</var> and drop rows whose count reached zero, then clear the
-          consumed deltas. Below is what OpenIVM compiles for <code>regional_totals</code>, captured with
-          <code>SET openivm_files_path</code> and lightly reformatted (catalog prefixes and literal timestamps
-          elided). It is ordinary SQL, which is what makes the approach portable.
+          One view definition becomes several SQL statements: compute Δ<var>V</var> from Δ<var>T</var>, fold
+          Δ<var>V</var> into <var>V</var>, publish the rows that changed, then clear the consumed deltas. Below is what
+          OpenIVM compiles for <code>regional_totals</code>, captured with <code>SET openivm_files_path</code>. Internal
+          tables are named after a key derived from the view's catalog, schema and name, shown as <code>&lt;key&gt;</code>;
+          catalog prefixes and literal timestamps are elided. It is ordinary SQL, which is what makes the approach
+          portable.
         </p>
       </div>
       <CodeTabs id="compiled" label="Compiled SQL stages" tabs={compiled} />
@@ -344,115 +286,6 @@ const operators: [string, string][] = [
   <section class="band">
     <div class="container">
       <div class="section-head">
-        <p class="eyebrow">Delta rules</p>
-        <h2>Classified by linearity, not pattern-matched.</h2>
-        <p class="lede">
-          Each node of the plan carries a rule kind that determines the shape of its delta and what state it needs.
-          It is the same taxonomy DBSP uses (Budiu et al., VLDB 2023), and it tells you, before the first refresh,
-          what a view will cost to maintain.
-        </p>
-      </div>
-      <div class="classes">
-        {
-          classes.map((c) => (
-            <article class="card cls">
-              <span class="pill">{c.k}</span>
-              <code class="rule">{c.rule}</code>
-              <p>{c.ops}</p>
-              <p class="cost">{c.cost}</p>
-            </article>
-          ))
-        }
-      </div>
-      <div class="card join-note">
-        <h3>Two ways to differentiate a join</h3>
-        <div class="join-rules">
-          <div>
-            <p class="rule-name">Inclusion–exclusion, over current state</p>
-            <code class="formula">Δ(R ⋈ S) = ΔR ⋈ S<sub>new</sub> + R<sub>new</sub> ⋈ ΔS − ΔR ⋈ ΔS</code>
-            <p>
-              By refresh time the base tables already contain their deltas. Joining each delta against the current
-              state counts the cross-term twice, so it is subtracted once: a Möbius sign
-              <code>(−1)^(k−1) × ∏ wᵢ</code> for a term using <em>k</em> deltas, giving 2ᴺ − 1 terms for <em>N</em>
-              tables.
-            </p>
-          </div>
-          <div>
-            <p class="rule-name">Telescoping, with time travel</p>
-            <code class="formula">Δ(⋈ᵢ Rᵢ) = Σᵢ (⋈<sub>j&lt;i</sub> R<sub>j</sub><sup>new</sup>) ⋈ ΔRᵢ ⋈ (⋈<sub>j&gt;i</sub> R<sub>j</sub><sup>old</sup>)</code>
-            <p>
-              When the old state is readable, for example through DuckLake snapshots, each combination of changes
-              lands in exactly one term: <em>N</em> joins instead of 2ᴺ − 1. The same rule covers inner, cross and
-              theta joins.
-            </p>
-          </div>
-        </div>
-        <p class="outer">
-          <b>Outer joins and negation</b> use match counts: a NULL-extended row is retracted when its match count
-          goes from zero to non-zero, and reinstated when it drops back to zero. <code>SEMI</code>,
-          <code>ANTI</code>, <code>EXISTS</code> and <code>NOT EXISTS</code> use the same zero-crossing transition.
-        </p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <div class="container">
-      <div class="section-head">
-        <p class="eyebrow">Beyond the textbook</p>
-        <h2>Data-dependent optimizations.</h2>
-        <p class="lede">
-          Correct delta rules are the floor. Because OpenIVM runs inside an engine, it can also look at the data and
-          the change itself to skip work entirely.
-        </p>
-      </div>
-      <div class="opts">
-        <article class="card opt">
-          <h3>Empty-delta skipping</h3>
-          <code class="formula">π<sub>k</sub>(ΔR) ∩ π<sub>k</sub>(S) = ∅ ⇒ skip</code>
-          <p>No source changed? Skip the refresh. A filter rejects every delta row? Every downstream term is zero.
-            New orders for customers the join never sees? That term is omitted even though the delta is non-empty.</p>
-        </article>
-        <article class="card opt">
-          <h3>Delta consolidation</h3>
-          <code class="formula">ΔR̄(t) = Σ<sub>u = t</sub> ΔR(u), keep ΔR̄(t) ≠ 0</code>
-          <p>Equal tuples are summed before anything else runs, so an insert and a delete of the same row, or an
-            update and its revert, cancel out before they cost anything.</p>
-        </article>
-        <article class="card opt">
-          <h3>Insert-only fast paths</h3>
-          <code class="formula">ΔR ≥ 0 ∧ Δ-rule ≥ 0 ⇒ append</code>
-          <p>When both the source change and the chosen delta rule are provably non-negative, projections append
-            directly, zero-group deletion is skipped, and <code>MIN</code>/<code>MAX</code> use
-            <code>LEAST</code>/<code>GREATEST</code> instead of rescanning groups.</p>
-        </article>
-        <article class="card opt">
-          <h3>Affected-domain recompute</h3>
-          <code class="formula">A = π<sub>k</sub>(ΔT),  N = σ<sub>k ∈ A</sub>(V(T<sub>new</sub>))</code>
-          <p>For operators without a closed-form delta (<code>MIN</code>/<code>MAX</code> with deletes, windows),
-            only the affected keys <var>A</var> are recomputed. <var>A</var> and <var>N</var> are materialized once
-            and reused to delete, replace, and emit the downstream delta.</p>
-        </article>
-        <article class="card opt">
-          <h3>SQL-exact NULLs</h3>
-          <code class="formula">count<sub>non-NULL</sub> = 0 ⇒ SUM = NULL</code>
-          <p>Nullable aggregate inputs carry a hidden non-NULL count, so a group that loses its last value returns
-            <code>NULL</code>, not <code>0</code>, and lookups use NULL-safe equality, exactly as SQL grouping does.</p>
-        </article>
-        <article class="card opt">
-          <h3>Window suffixes</h3>
-          <code class="formula">min ord(ΔP) &gt; max ord(P<sub>old</sub>)</code>
-          <p>A cumulative window whose new rows all come after the old ones is extended from its last stored
-            aggregate instead of recomputing the partition; late rows fall back to partition recompute.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="band">
-    <div class="container">
-      <div class="section-head">
-        <p class="eyebrow">Cross-system</p>
         <h2>Maintain views across engines.</h2>
         <p class="lede">
           Modern pipelines span several systems: transactions in one, analytics in another. Because the maintenance
@@ -467,39 +300,6 @@ const operators: [string, string][] = [
   <section>
     <div class="container">
       <div class="section-head">
-        <p class="eyebrow">Operator coverage</p>
-        <h2>Any SQL in, the cheapest correct refresh out.</h2>
-        <p class="lede">
-          Views that cannot be maintained incrementally are detected at creation time. With
-          <code>openivm_refresh_mode = 'auto'</code> they fall back to a full refresh.
-        </p>
-      </div>
-      <div class="card ops table-wrap">
-        <table class="data-table">
-          <thead><tr><th>Operator</th><th>Strategy</th></tr></thead>
-          <tbody>
-            {
-              operators.map(([op, strat]) => (
-                <tr>
-                  <td>{op}</td>
-                  <td class={strat.startsWith('incremental') ? 'plus' : 'muted'}>{strat}</td>
-                </tr>
-              ))
-            }
-          </tbody>
-        </table>
-      </div>
-      <p class="more">
-        Per-operator derivations live in the{' '}
-        <a href="https://github.com/ila/openivm/tree/main/docs/operators">operator docs</a>.
-      </p>
-    </div>
-  </section>
-
-  <section class="band">
-    <div class="container">
-      <div class="section-head">
-        <p class="eyebrow">Try it</p>
         <h2>A view that only does the work that changed.</h2>
         <p class="lede">
           The view below is <code>SELECT region, SUM(amount), COUNT(*) FROM sales GROUP BY region</code>. Changes
@@ -511,83 +311,50 @@ const operators: [string, string][] = [
     </div>
   </section>
 
-  <section>
+  <section class="band">
     <div class="container">
-      <div class="card paper">
-        <p class="eyebrow">Read the paper</p>
-        <h3>
-          <a href="https://dl.acm.org/doi/10.1145/3626246.3654743"
-            >OpenIVM: a SQL-to-SQL Compiler for Incremental Computations</a
-          >
-        </h3>
-        <p class="muted">Ilaria Battiston, Kriti Kathuria, Peter Boncz · SIGMOD Companion 2024</p>
+      <div class="section-head">
+        <h2>Go deeper.</h2>
+        <p class="lede">The full internals live in the repository docs, next to the code they describe.</p>
+      </div>
+      <div class="deeper">
+        {
+          deeper.map((x) => (
+            <a class="card deep" href={x.href}>
+              <h3>{x.t}</h3>
+              <p>{x.d}</p>
+              <span class="go">Read →</span>
+            </a>
+          ))
+        }
       </div>
     </div>
   </section>
 </Base>
 
 <style>
-  .muted {
-    color: var(--muted);
-  }
   .band {
     background: var(--bg-2);
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
   }
 
-  .steps {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
-  }
-  .step {
-    padding: 22px;
-    position: relative;
-    display: grid;
-    align-content: start;
-    gap: 10px;
-  }
-  .step:not(:last-child)::after {
-    content: '→';
-    position: absolute;
-    right: -13px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--faint);
-    z-index: 1;
-  }
-  .step .k {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--insert);
-  }
-  .step h3 {
-    font-size: 1.05rem;
-  }
-  .step p {
-    color: var(--muted);
-    font-size: 0.9rem;
-  }
-
-  .model {
+  .model,
+  .zset {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 48px;
     align-items: center;
   }
-  .model .lede + .lede {
+  .model .lede + .lede,
+  .zset .lede + .lede {
     margin-top: 14px;
   }
   var {
     font-family: 'Georgia', 'Times New Roman', serif;
     font-style: italic;
     font-size: 1.05em;
+    padding: 0 0.12em 0 0.04em;
   }
   .eq-card {
     padding: 28px;
@@ -612,7 +379,8 @@ const operators: [string, string][] = [
     color: var(--faint);
     font-size: 0.88rem;
   }
-  .zs {
+  .zs,
+  .alg {
     border-top: 1px solid var(--border);
     padding-top: 16px;
     display: grid;
@@ -641,25 +409,22 @@ const operators: [string, string][] = [
     border-top: 1px dashed var(--border-strong);
     padding-top: 8px;
   }
-  .paper {
-    padding: 32px;
-  }
-  .paper h3 {
-    font-size: 1.3rem;
-    margin-bottom: 8px;
-  }
-  .paper h3 a {
-    color: var(--text);
-  }
-  .zset {
+  .alg-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 48px;
-    align-items: center;
+    grid-template-columns: 110px auto 1fr;
+    gap: 12px;
+    align-items: baseline;
+    color: var(--muted);
+    font-size: 0.92rem;
   }
-  .zset .lede + .lede {
-    margin-top: 14px;
+  .alg-row code {
+    color: var(--insert);
   }
+  .alg-row .dim {
+    color: var(--faint);
+    font-size: 0.85rem;
+  }
+
   .delta-card {
     padding: 22px;
   }
@@ -674,81 +439,6 @@ const operators: [string, string][] = [
     color: var(--faint);
   }
 
-  .classes {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
-  }
-  .cls {
-    padding: 22px;
-    display: grid;
-    gap: 12px;
-    align-content: start;
-  }
-  .cls .pill {
-    justify-self: start;
-    color: var(--accent);
-  }
-  .rule {
-    font-size: 0.82rem;
-    color: var(--text);
-    background: none;
-    border: 0;
-    padding: 0;
-  }
-  .cls p {
-    color: var(--muted);
-    font-size: 0.9rem;
-  }
-  .cls .cost {
-    color: var(--faint);
-    font-size: 0.84rem;
-  }
-  .join-note {
-    margin-top: 18px;
-    padding: 26px;
-    display: grid;
-    gap: 10px;
-  }
-  .join-note p {
-    color: var(--muted);
-    max-width: 90ch;
-  }
-  .join-rules {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 28px;
-    margin-top: 6px;
-  }
-  .join-rules > div {
-    display: grid;
-    gap: 10px;
-    align-content: start;
-  }
-  .rule-name {
-    color: var(--text) !important;
-    font-weight: 600;
-    font-size: 0.95rem;
-  }
-  .formula {
-    display: block;
-    background: var(--bg) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-    padding: 10px 12px !important;
-    font-size: 0.82rem;
-    color: var(--accent);
-    overflow-x: auto;
-    white-space: nowrap;
-  }
-  .outer {
-    border-top: 1px solid var(--border);
-    padding-top: 14px;
-    margin-top: 8px;
-  }
-  .outer b {
-    color: var(--text);
-  }
   .flow-list {
     margin: 28px 0 0;
     padding: 0;
@@ -776,154 +466,52 @@ const operators: [string, string][] = [
   .flow-list b {
     color: var(--text);
   }
-  .opts {
+
+  .deeper {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px;
   }
-  .opt {
+  .deep {
     padding: 22px;
     display: grid;
-    gap: 12px;
+    gap: 10px;
     align-content: start;
+    color: var(--text);
+    transition: border-color 0.15s, transform 0.15s;
   }
-  .opt h3 {
+  .deep:hover {
+    text-decoration: none;
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+  }
+  .deep h3 {
     font-size: 1.05rem;
   }
-  .opt p {
+  .deep p {
     color: var(--muted);
     font-size: 0.9rem;
   }
-  .alg {
-    border-top: 1px solid var(--border);
-    padding-top: 16px;
-    display: grid;
-    gap: 8px;
-  }
-  .alg-row {
-    display: grid;
-    grid-template-columns: 110px auto 1fr;
-    gap: 12px;
-    align-items: baseline;
-    color: var(--muted);
-    font-size: 0.92rem;
-  }
-  .alg-row code {
+  .go {
     color: var(--insert);
-  }
-  .alg-row .dim {
-    color: var(--faint);
-    font-size: 0.85rem;
-  }
-
-  .ops {
-    padding: 14px 18px;
-  }
-  .more {
-    margin-top: 16px;
-    color: var(--muted);
-    font-size: 0.92rem;
+    font-weight: 600;
+    font-size: 0.9rem;
   }
 
   @media (max-width: 960px) {
-    .steps,
-    .classes,
-    .flow-list,
-    .opts {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .join-rules {
-      grid-template-columns: 1fr;
-    }
-    .step::after {
-      display: none;
-    }
-    .model {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 48px;
-    align-items: center;
-  }
-  .model .lede + .lede {
-    margin-top: 14px;
-  }
-  var {
-    font-family: 'Georgia', 'Times New Roman', serif;
-    font-style: italic;
-    font-size: 1.05em;
-  }
-  .eq-card {
-    padding: 28px;
-    display: grid;
-    gap: 18px;
-  }
-  .eq {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px 18px;
-    font-size: 1.35rem;
-    color: var(--text);
-  }
-  .eq-arrow {
-    color: var(--insert);
-  }
-  .eq-r {
-    color: var(--accent);
-  }
-  .eq-note {
-    color: var(--faint);
-    font-size: 0.88rem;
-  }
-  .zs {
-    border-top: 1px solid var(--border);
-    padding-top: 16px;
-    display: grid;
-    gap: 8px;
-  }
-  .zs-title {
-    color: var(--muted);
-    font-size: 0.85rem;
-    margin-bottom: 4px;
-  }
-  .zs-row {
-    display: grid;
-    grid-template-columns: 90px 1fr;
-    align-items: baseline;
-  }
-  .zs-row code {
-    background: none;
-    border: 0;
-    padding: 0;
-    color: var(--text);
-  }
-  .zs-k {
-    color: var(--muted);
-  }
-  .zs-row.sum {
-    border-top: 1px dashed var(--border-strong);
-    padding-top: 8px;
-  }
-  .paper {
-    padding: 32px;
-  }
-  .paper h3 {
-    font-size: 1.3rem;
-    margin-bottom: 8px;
-  }
-  .paper h3 a {
-    color: var(--text);
-  }
-  .zset {
+    .model,
+    .zset {
       grid-template-columns: 1fr;
       gap: 28px;
     }
+    .flow-list,
+    .deeper {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
   @media (max-width: 560px) {
-    .steps,
-    .classes,
     .flow-list,
-    .opts {
+    .deeper {
       grid-template-columns: 1fr;
     }
   }

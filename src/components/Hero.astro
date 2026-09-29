@@ -23,6 +23,10 @@
         <a class="btn btn-primary" href="/quickstart/">Quickstart</a>
         <a class="btn" href="https://github.com/ila/openivm">View on GitHub</a>
       </div>
+      <p class="origin">
+        Built at <a href="https://www.cwi.nl/">CWI</a> Amsterdam ·{' '}
+        <a href="https://dl.acm.org/doi/10.1145/3626246.3654743">SIGMOD 2024 paper</a>
+      </p>
     </div>
   </div>
 </section>
@@ -79,6 +83,21 @@
     flex-wrap: wrap;
     gap: 12px;
     margin-top: 32px;
+  }
+
+  .origin {
+    margin-top: 22px;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+  .origin a {
+    color: var(--text);
+    text-decoration: underline;
+    text-decoration-color: var(--border-strong);
+    text-underline-offset: 3px;
+  }
+  .origin a:hover {
+    text-decoration-color: var(--insert);
   }
 
   @media (min-width: 1100px) {

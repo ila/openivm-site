@@ -18,7 +18,7 @@
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --radius: 12px;
-  --maxw: 1160px;
+  --maxw: 1220px;
   --gutter: clamp(16px, 4vw, 32px);
 
   color-scheme: dark;
@@ -105,7 +105,7 @@ p {
 }
 
 section {
-  padding: clamp(72px, 10vw, 128px) 0;
+  padding: clamp(56px, 7vw, 96px) 0;
 }
 
 .eyebrow {

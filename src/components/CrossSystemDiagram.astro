@@ -7,8 +7,8 @@
     <svg viewBox="0 0 900 290" role="img" aria-labelledby="xs-title xs-desc">
       <title id="xs-title">Cross-system IVM between DuckDB and PostgreSQL</title>
       <desc id="xs-desc">
-        A materialized view in DuckDB is defined over a table in an attached PostgreSQL instance. Updates to the
-        PostgreSQL table are captured in a delta table there. OpenIVM sends compiled queries to PostgreSQL, the
+        The regional_totals view in DuckDB is defined over the sales table in an attached PostgreSQL instance.
+        Updates to sales are captured in a delta table there. OpenIVM sends compiled queries to PostgreSQL, the
         incremental result flows back into the view's delta in DuckDB, and is merged into the view.
       </desc>
       <defs>
@@ -17,27 +17,29 @@
         </marker>
       </defs>
 
-      <rect class="box input" x="10" y="44" width="200" height="92" rx="10"></rect>
-      <text class="mono" x="24" y="70">CREATE MATERIALIZED</text>
-      <text class="mono" x="24" y="88">VIEW my_view AS</text>
-      <text class="mono" x="24" y="106">SELECT COUNT(*)</text>
-      <text class="mono" x="24" y="124">FROM p.my_table;</text>
+      <rect class="box input" x="10" y="30" width="200" height="132" rx="10"></rect>
+      <text class="mono" x="24" y="54">CREATE MATERIALIZED</text>
+      <text class="mono" x="24" y="72">VIEW regional_totals AS</text>
+      <text class="mono" x="24" y="90">SELECT region,</text>
+      <text class="mono" x="38" y="108">SUM(amount) AS total</text>
+      <text class="mono" x="24" y="126">FROM p.sales</text>
+      <text class="mono" x="24" y="144">GROUP BY region;</text>
 
       <rect class="engine" x="260" y="20" width="220" height="232" rx="16"></rect>
       <text class="eng" x="370" y="48">DuckDB</text>
       <text class="role" x="370" y="274">analytical engine</text>
       <rect class="box" x="292" y="80" width="156" height="46" rx="9"></rect>
-      <text class="t" x="370" y="108">my_view</text>
+      <text class="t" x="370" y="108">regional_totals</text>
       <rect class="box delta" x="292" y="176" width="156" height="46" rx="9"></rect>
-      <text class="t" x="370" y="204">Δ my_view</text>
+      <text class="t" x="370" y="204">Δ regional_totals</text>
 
       <rect class="engine" x="620" y="20" width="220" height="232" rx="16"></rect>
       <text class="eng" x="730" y="48">PostgreSQL <tspan class="dim">p</tspan></text>
       <text class="role" x="730" y="274">attached transactional engine</text>
       <rect class="box" x="652" y="80" width="156" height="46" rx="9"></rect>
-      <text class="t" x="730" y="108">my_table</text>
+      <text class="t" x="730" y="108">sales</text>
       <rect class="box delta" x="652" y="176" width="156" height="46" rx="9"></rect>
-      <text class="t" x="730" y="204">Δ my_table</text>
+      <text class="t" x="730" y="204">Δ sales</text>
 
       <g class="flow">
         <path d="M210 90H256" marker-end="url(#xs-arrow)"></path>
