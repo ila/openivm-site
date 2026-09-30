@@ -9,8 +9,8 @@ interface Props {
 }
 
 const {
-  title = 'OpenIVM - Open Incremental View Maintenance',
-  description = 'OpenIVM compiles SQL materialized views into incremental SQL. Refresh only what changed, with a rigorous foundation for inserts, updates and deletes. Available for DuckDB, coming to Apache Spark.',
+  title = 'OpenIVM - Incremental Materialized Views for DuckDB and Spark',
+  description = 'OpenIVM brings incremental view maintenance (IVM) to DuckDB and Spark: it compiles SQL materialized views into incremental SQL, so data pipelines and dbt models refresh only what changed. Open source, from CWI.',
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site);
@@ -47,6 +47,7 @@ const ogImage = new URL('/og.png', Astro.site);
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
+    <slot name="head" />
   </head>
   <body>
     <Nav />

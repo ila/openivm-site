@@ -2,6 +2,46 @@
 import Base from '../layouts/Base.astro';
 import Hero from '../components/Hero.astro';
 
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      name: 'OpenIVM',
+      url: 'https://openivm.org/',
+    },
+    {
+      '@type': 'SoftwareSourceCode',
+      name: 'OpenIVM',
+      description:
+        'Open-source incremental view maintenance (IVM) compiler that turns SQL materialized views into incremental SQL. A DuckDB extension, with Apache Spark support in development.',
+      url: 'https://openivm.org/',
+      codeRepository: 'https://github.com/ila/openivm',
+      programmingLanguage: ['C++', 'SQL'],
+      runtimePlatform: ['DuckDB', 'Apache Spark'],
+      license: 'https://opensource.org/licenses/MIT',
+      keywords: [
+        'incremental view maintenance',
+        'IVM',
+        'materialized views',
+        'DuckDB',
+        'DuckDB extension',
+        'Apache Spark',
+        'data pipelines',
+        'dbt',
+        'incremental refresh',
+        'DuckLake',
+      ],
+      sourceOrganization: { '@type': 'Organization', name: 'CWI', url: 'https://www.cwi.nl/' },
+      citation: {
+        '@type': 'ScholarlyArticle',
+        name: 'OpenIVM: a SQL-to-SQL Compiler for Incremental Computations',
+        url: 'https://dl.acm.org/doi/10.1145/3626246.3654743',
+      },
+    },
+  ],
+};
+
 const pillars = [
   {
     n: '01',
@@ -25,6 +65,7 @@ const pillars = [
 ---
 
 <Base>
+  <script type="application/ld+json" slot="head" set:html={JSON.stringify(jsonLd)} />
   <Hero />
 
   <section id="why" class="problem">
@@ -32,12 +73,12 @@ const pillars = [
       <h2>ETL costs scale with your data. They should scale with your changes.</h2>
       <div class="problem-body">
         <p>
-          LLMs and tools like dbt generate more queries than ever, and most of them recompute from scratch on every
-          run, while Spark, the ETL engine behind most lakehouses, has no open incremental alternative.
+          LLMs and tools like dbt generate more data pipelines than ever, and most of them recompute from scratch on
+          every run, while Spark, the ETL engine behind most lakehouses, has no open incremental alternative.
         </p>
         <p class="strong">
-          OpenIVM is an open-source IVM compiler that makes those queries refresh only what changed, inside the
-          engines you already run.
+          OpenIVM is an open-source incremental view maintenance (IVM) compiler that makes those pipelines refresh only
+          what changed, inside the engines you already run.
         </p>
       </div>
     </div>
@@ -92,8 +133,8 @@ const pillars = [
         <article class="card engine">
           <div class="engine-top"><h3>DuckDB</h3><span class="pill ok">available · source build</span></div>
           <p>
-            The reference implementation. Materialized views, automatic refresh, cascading pipelines, adaptive cost
-            model and DuckLake integration. Community extension planned for end of 2026.
+            The reference implementation: incremental materialized views in DuckDB, with automatic refresh, cascading
+            pipelines, an adaptive cost model and DuckLake integration. Community extension planned for end of 2026.
           </p>
           <a href="https://github.com/ila/openivm">github.com/ila/openivm →</a>
         </article>
