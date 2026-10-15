@@ -59,7 +59,7 @@ npm run deploy       # build + wrangler deploy
 ## Brand
 
 The logo is a delta drawn as a refresh loop: only the last stretch (pink) is redrawn, like an incremental refresh.
-SVGs live in [`public/brand/`](public/brand/) and are served from `https://openivm.org/brand/`.
+SVGs live in [`brand/`](brand/). They are not part of the website.
 
 | File | Use |
 | --- | --- |
