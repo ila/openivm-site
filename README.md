@@ -37,13 +37,24 @@ wrangler.jsonc              Cloudflare Workers static-assets config
 The site is a Cloudflare Worker serving static assets (`wrangler.jsonc`), bound to `openivm.org` and
 `www.openivm.org` as custom domains.
 
+**Every push to `main` deploys automatically** through GitHub Actions (`.github/workflows/ci.yml`): the workflow
+builds and type-checks the site, then publishes it with Wrangler. Pull requests are built and checked but never
+deployed, so open a PR, let CI pass, and merge. To redeploy without a change, run the workflow manually from the
+**Actions** tab.
+
+Contributors only need write access to this repository. The workflow authenticates with two repository secrets:
+
+| Secret | Value |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | A Cloudflare API token created from the **Edit Cloudflare Workers** template, scoped to this account and the `openivm.org` zone |
+| `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account ID |
+
+Deploying by hand from a laptop still works for the account owner:
+
 ```sh
 npx wrangler login   # once
 npm run deploy       # build + wrangler deploy
 ```
-
-GitHub Actions (`.github/workflows/ci.yml`) checks that every push builds. To deploy on push instead, connect the
-repo under **Workers & Pages → openivm-site → Settings → Builds** in the Cloudflare dashboard.
 
 ## Roadmap
 
