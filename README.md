@@ -56,6 +56,21 @@ npx wrangler login   # once
 npm run deploy       # build + wrangler deploy
 ```
 
+## Brand
+
+The logo is a delta drawn as a refresh loop: only the last stretch (pink) is redrawn, like an incremental refresh.
+SVGs live in [`public/brand/`](public/brand/) and are served from `https://openivm.org/brand/`.
+
+| File | Use |
+| --- | --- |
+| `openivm-logo.svg` | Mark and wordmark, for dark backgrounds |
+| `openivm-logo-light.svg` | Mark and wordmark, for light backgrounds |
+| `openivm-mark.svg` | Mark only, for dark backgrounds |
+| `openivm-mark-light.svg` | Mark only, for light backgrounds |
+| `openivm-icon.svg` | App icon / avatar on its own dark tile |
+
+The wordmark is Inter (600 for "Open", 800 for "IVM"), converted to outlines so it renders without the font.
+
 ## Roadmap
 
 - Live benchmark fed by `ivm-bench` (static Parquet, rendered in-browser)
